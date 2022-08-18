@@ -1,4 +1,3 @@
-var _a, _b, _c, _d;
 var BankStateEnum;
 (function (BankStateEnum) {
     BankStateEnum[BankStateEnum["Idle"] = 0] = "Idle";
@@ -15,6 +14,29 @@ var MemCommandEnum;
     MemCommandEnum[MemCommandEnum["READ"] = 3] = "READ";
     MemCommandEnum[MemCommandEnum["WRITE"] = 4] = "WRITE";
 })(MemCommandEnum || (MemCommandEnum = {}));
+var MemCommand = /** @class */ (function () {
+    function MemCommand(cmd, bank, addr) {
+        this.Command = cmd;
+        this.BankNum = bank;
+        this.Address = addr;
+        this.AutoPrecharge = false;
+    }
+    Object.defineProperty(MemCommand.prototype, "BankGroup", {
+        get: function () {
+            return this.BankNum >> 2;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    Object.defineProperty(MemCommand.prototype, "Bank", {
+        get: function () {
+            return this.BankNum & 3;
+        },
+        enumerable: false,
+        configurable: true
+    });
+    return MemCommand;
+}());
 var MemoryController = /** @class */ (function () {
     function MemoryController(tCL, tCWL, tRCD, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tREFI, tRFC, tCR, gdm, x16) {
         this.tCL = tCL;
@@ -377,7 +399,7 @@ var MemoryController = /** @class */ (function () {
                 if (cmd.Command === MemCommandEnum.REF)
                     continue;
                 this.bankCommandQueue[i].DequeueCommand();
-                if (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE) {
+                if (this.UseAutoPrecharge && (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE)) {
                     if (!this.bankCommandQueue[i].Empty && this.bankCommandQueue[i].FirstCommand.Command === MemCommandEnum.PRE && !this.bankCommandQueue[i].FirstCommand.AutoPrecharge) {
                         cmd.AutoPrecharge = true;
                         this.bankCommandQueue[i].DequeueCommand();
@@ -490,29 +512,6 @@ var CommandHistory = /** @class */ (function () {
     };
     return CommandHistory;
 }());
-var MemCommand = /** @class */ (function () {
-    function MemCommand(cmd, bank, addr) {
-        this.Command = cmd;
-        this.BankNum = bank;
-        this.Address = addr;
-        this.AutoPrecharge = false;
-    }
-    Object.defineProperty(MemCommand.prototype, "BankGroup", {
-        get: function () {
-            return this.BankNum >> 2;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(MemCommand.prototype, "Bank", {
-        get: function () {
-            return this.BankNum & 3;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    return MemCommand;
-}());
 var DqsSchedule = /** @class */ (function () {
     function DqsSchedule(cycles, row, cmd, pre) {
         this.DueCycles = cycles;
@@ -529,7 +528,77 @@ function toHex(v, len) {
         s = '0' + s;
     return s;
 }
+var stateKey = 'SAVE';
 var cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(function (v) { return v.tagName === "TBODY"; })[0];
+var allTimings = ['tCL',
+    'tCWL',
+    'tRCD',
+    'tRP',
+    'tRAS',
+    'tRC',
+    'tRRDs',
+    'tRRDl',
+    'tFAW',
+    'tWTRs',
+    'tWTRl',
+    'tWR',
+    'tRTP',
+    'tCCDl',
+    'tCCDs',
+    'tREFI',
+    'tRFC',
+    'tCR',
+    'gearDown',
+    'x16',
+    'cycles',
+    'allCycles',
+    'useAP'];
+function saveState(imcCommands) {
+    var timings = {};
+    for (var i = 0; i < allTimings.length; i++) {
+        var ele = $x(allTimings[i]);
+        var val = ele.value;
+        if (ele.type === "checkbox")
+            val = ele.checked;
+        if (ele.type === "number")
+            val = parseInt(ele.value);
+        timings[allTimings[i]] = val;
+    }
+    localStorage.setItem(stateKey, JSON.stringify({
+        timings: timings,
+        commands: imcCommands
+    }));
+}
+function loadState() {
+    var _a;
+    var state = JSON.parse(localStorage.getItem(stateKey));
+    if (state === null || state === void 0 ? void 0 : state.timings) {
+        for (var i = 0; i < allTimings.length; i++) {
+            var val = state === null || state === void 0 ? void 0 : state.timings[allTimings[i]];
+            if (val === undefined)
+                continue;
+            var ele = $x(allTimings[i]);
+            if (ele.type === "checkbox")
+                ele.checked = !!val;
+            else
+                ele.value = val === null || val === void 0 ? void 0 : val.toString();
+        }
+    }
+    if ((_a = state === null || state === void 0 ? void 0 : state.commands) === null || _a === void 0 ? void 0 : _a.length) {
+        for (var i = 0; i < state.commands.length; i++) {
+            var cmd = state.commands[i];
+            if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
+                var _b = addCmdRow(), ci = _b[0], rw = _b[1], ai = _b[2];
+                ci.value = (1 + cmd.Cycle).toString();
+                rw.checked = !!cmd.IsWrite;
+                ai.value = toHex(cmd.Address, 8);
+            }
+        }
+    }
+    else {
+        addCmdRow();
+    }
+}
 $x('go').onclick = function () {
     var _a;
     var cycleTable = $x('cycleTable');
@@ -542,6 +611,7 @@ $x('go').onclick = function () {
     }
     cycleTable.appendChild(tableBody);
     var mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCD').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, $x('x16').checked);
+    mc.UseAutoPrecharge = !!$x('useAP').checked;
     var cycles = parseInt($x('cycles').value);
     var allCycles = $x('allCycles').checked;
     var imcCommands = [];
@@ -559,6 +629,7 @@ $x('go').onclick = function () {
         }
     }
     imcCommands.sort(function (a, b) { return a.Cycle - b.Cycle; });
+    saveState(imcCommands);
     var outputDesCycle = true;
     for (var i = 0; i < cycles; i++) {
         while (imcCommands.length && imcCommands[0].Cycle === mc.CurrentCycle) {
@@ -811,24 +882,5 @@ function addCmdRow() {
     cmdTable.appendChild(row);
     return [cycleInput, rwInput, addrInput];
 }
-var _e = addCmdRow(), ci = _e[0], rw = _e[1], ai = _e[2];
-ci.value = '1';
-rw.checked = false;
-ai.value = '12345678';
-_a = addCmdRow(), ci = _a[0], rw = _a[1], ai = _a[2];
-ci.value = '2';
-rw.checked = true;
-ai.value = '12345778';
-_b = addCmdRow(), ci = _b[0], rw = _b[1], ai = _b[2];
-ci.value = '3';
-rw.checked = false;
-ai.value = '12355778';
-_c = addCmdRow(), ci = _c[0], rw = _c[1], ai = _c[2];
-ci.value = '4';
-rw.checked = true;
-ai.value = '12345678';
-_d = addCmdRow(), ci = _d[0], rw = _d[1], ai = _d[2];
-ci.value = '5';
-rw.checked = false;
-ai.value = '12345778';
+loadState();
 //# sourceMappingURL=script.js.map

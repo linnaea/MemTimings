@@ -6,6 +6,29 @@ enum MemCommandEnum {
     REF, ACT, PRE, READ,WRITE
 }
 
+class MemCommand {
+    public Command: MemCommandEnum;
+    public BankNum: number;
+    public Address: number;
+    public AutoPrecharge: boolean;
+    public NotLatched: number;
+
+    get BankGroup(): number {
+        return this.BankNum >> 2;
+    }
+
+    get Bank(): number {
+        return this.BankNum & 3;
+    }
+
+    public constructor(cmd: MemCommandEnum, bank: number, addr: number) {
+        this.Command = cmd;
+        this.BankNum = bank;
+        this.Address = addr;
+        this.AutoPrecharge = false;
+    }
+}
+
 class MemoryController {
     private static readonly BANKS = 16;
 
@@ -46,6 +69,7 @@ class MemoryController {
     private currentCommand: MemCommand;
     private dqsActive: boolean;
     private dqActive: [MemCommandEnum, number, number, number, number];
+    public UseAutoPrecharge: boolean;
 
     get CurrentCycle(): number { return this.currentCycle; }
     get CurrentCommand(): MemCommand { return this.currentCommand; }
@@ -419,7 +443,7 @@ class MemoryController {
                 if (cmd.Command === MemCommandEnum.REF) continue;
                 this.bankCommandQueue[i].DequeueCommand();
 
-                if (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE) {
+                if (this.UseAutoPrecharge && (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE)) {
                     if (!this.bankCommandQueue[i].Empty && this.bankCommandQueue[i].FirstCommand.Command === MemCommandEnum.PRE && !this.bankCommandQueue[i].FirstCommand.AutoPrecharge) {
                         cmd.AutoPrecharge = true;
                         this.bankCommandQueue[i].DequeueCommand();
@@ -547,29 +571,6 @@ interface ImcCommand {
     Address: number;
 }
 
-class MemCommand {
-    public Command: MemCommandEnum;
-    public BankNum: number;
-    public Address: number;
-    public AutoPrecharge: boolean;
-    public NotLatched: number;
-
-    get BankGroup(): number {
-        return this.BankNum >> 2;
-    }
-
-    get Bank(): number {
-        return this.BankNum & 3;
-    }
-
-    public constructor(cmd: MemCommandEnum, bank: number, addr: number) {
-        this.Command = cmd;
-        this.BankNum = bank;
-        this.Address = addr;
-        this.AutoPrecharge = false;
-    }
-}
-
 class DqsSchedule {
     public DueCycles: number;
     public Command: MemCommand;
@@ -591,7 +592,78 @@ function toHex(v: number, len: number) {
     return s;
 }
 
+const stateKey = 'SAVE';
 const cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(v => v.tagName === "TBODY")[0];
+const allTimings = ['tCL',
+    'tCWL',
+    'tRCD',
+    'tRP',
+    'tRAS',
+    'tRC',
+    'tRRDs',
+    'tRRDl',
+    'tFAW',
+    'tWTRs',
+    'tWTRl',
+    'tWR',
+    'tRTP',
+    'tCCDl',
+    'tCCDs',
+    'tREFI',
+    'tRFC',
+    'tCR',
+    'gearDown',
+    'x16',
+'cycles',
+'allCycles',
+'useAP'];
+
+function saveState(imcCommands: ImcCommand[]) {
+    const timings = {};
+    for (let i = 0; i < allTimings.length; i++) {
+        const ele = <HTMLInputElement>$x(allTimings[i]);
+        let val: any = ele.value;
+        if (ele.type === "checkbox") val = ele.checked;
+        if (ele.type === "number") val = parseInt(ele.value);
+        timings[allTimings[i]] = val;
+    }
+
+    localStorage.setItem(stateKey, JSON.stringify({
+        timings: timings,
+        commands: imcCommands
+    }));
+}
+
+function loadState() {
+    const state = JSON.parse(localStorage.getItem(stateKey));
+    if (state?.timings) {
+        for (let i = 0; i < allTimings.length; i++) {
+            let val: any = state?.timings[allTimings[i]];
+            if (val === undefined)
+                continue;
+
+            const ele = <HTMLInputElement>$x(allTimings[i]);
+            if (ele.type === "checkbox")
+                ele.checked = !!val;
+            else
+                ele.value = val?.toString();
+        }
+    }
+
+    if (state?.commands?.length) {
+        for (let i = 0; i < state.commands.length; i++) {
+            const cmd = state.commands[i];
+            if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
+                const [ci, rw, ai] = addCmdRow();
+                ci.value = (1 + cmd.Cycle).toString();
+                rw.checked = !!cmd.IsWrite;
+                ai.value = toHex(cmd.Address, 8);
+            }
+        }
+    } else {
+        addCmdRow();
+    }
+}
 
 $x('go').onclick = function () {
     const cycleTable = $x('cycleTable');
@@ -624,7 +696,9 @@ $x('go').onclick = function () {
         parseInt((<HTMLInputElement>$x('tCR')).value),
         (<HTMLInputElement>$x('gearDown')).checked,
         (<HTMLInputElement>$x('x16')).checked,
-    )
+    );
+
+    mc.UseAutoPrecharge = !!(<HTMLInputElement>$x('useAP')).checked;
     const cycles = parseInt((<HTMLInputElement>$x('cycles')).value);
     const allCycles = (<HTMLInputElement>$x('allCycles')).checked;
     const imcCommands: ImcCommand[] = [];
@@ -642,6 +716,7 @@ $x('go').onclick = function () {
     }
 
     imcCommands.sort((a, b) => a.Cycle - b.Cycle);
+    saveState(imcCommands);
     let outputDesCycle = true;
     for (let i = 0; i < cycles; i++) {
         while(imcCommands.length && imcCommands[0].Cycle === mc.CurrentCycle) {
@@ -841,6 +916,8 @@ $x('go').onclick = function () {
                 outputDesCycle = true;
         }
     }
+
+
 }
 
 function addCmdRow() {
@@ -905,27 +982,4 @@ function addCmdRow() {
     return [cycleInput, rwInput, addrInput];
 }
 
-let [ci, rw, ai] = addCmdRow();
-ci.value = '1';
-rw.checked = false;
-ai.value = '12345678';
-
-[ci, rw, ai] = addCmdRow();
-ci.value = '2';
-rw.checked = true;
-ai.value = '12345778';
-
-[ci, rw, ai] = addCmdRow();
-ci.value = '3';
-rw.checked = false;
-ai.value = '12355778';
-
-[ci, rw, ai] = addCmdRow();
-ci.value = '4';
-rw.checked = true;
-ai.value = '12345678';
-
-[ci, rw, ai] = addCmdRow();
-ci.value = '5';
-rw.checked = false;
-ai.value = '12345778';
+loadState();
