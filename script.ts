@@ -1144,8 +1144,8 @@ function renderStateDumpBankGroup(bg: number) {
     ));
     tbody.appendChild(createTableRow(
         'Open Row',
-        toHex(mc.BankState[bg].CurrentOpenRow, 3), toHex(mc.BankState[bg + 1].CurrentOpenRow, 3),
-        toHex(mc.BankState[bg + 2].CurrentOpenRow, 3), toHex(mc.BankState[bg + 3].CurrentOpenRow, 3),
+        toHex(mc.BankState[bg].CurrentOpenRow, 5), toHex(mc.BankState[bg + 1].CurrentOpenRow, 5),
+        toHex(mc.BankState[bg + 2].CurrentOpenRow, 5), toHex(mc.BankState[bg + 3].CurrentOpenRow, 5),
     ));
     tbody.appendChild(createTableRow(
         'AP Engaged', mc.BankState[bg].WillPrecharge, mc.BankState[bg + 1].WillPrecharge,

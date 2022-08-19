@@ -1038,7 +1038,7 @@ function renderStateDumpBankGroup(bg) {
     var mc = getOrCreateController();
     tbody.appendChild(createTableRow('State', renderState(mc.BankState[bg].State), renderState(mc.BankState[bg + 1].State), renderState(mc.BankState[bg + 2].State), renderState(mc.BankState[bg + 3].State)));
     tbody.appendChild(createTableRow('Cycles', mc.BankState[bg].StateCycles, mc.BankState[bg + 1].StateCycles, mc.BankState[bg + 2].StateCycles, mc.BankState[bg + 3].StateCycles));
-    tbody.appendChild(createTableRow('Open Row', toHex(mc.BankState[bg].CurrentOpenRow, 3), toHex(mc.BankState[bg + 1].CurrentOpenRow, 3), toHex(mc.BankState[bg + 2].CurrentOpenRow, 3), toHex(mc.BankState[bg + 3].CurrentOpenRow, 3)));
+    tbody.appendChild(createTableRow('Open Row', toHex(mc.BankState[bg].CurrentOpenRow, 5), toHex(mc.BankState[bg + 1].CurrentOpenRow, 5), toHex(mc.BankState[bg + 2].CurrentOpenRow, 5), toHex(mc.BankState[bg + 3].CurrentOpenRow, 5)));
     tbody.appendChild(createTableRow('AP Engaged', mc.BankState[bg].WillPrecharge, mc.BankState[bg + 1].WillPrecharge, mc.BankState[bg + 2].WillPrecharge, mc.BankState[bg + 3].WillPrecharge));
     tbody.appendChild(createTableRow('Active WRITEs', mc.BankState[bg].WriteTxs, mc.BankState[bg + 1].WriteTxs, mc.BankState[bg + 2].WriteTxs, mc.BankState[bg + 3].WriteTxs));
     tbody.appendChild(createTableRow('Last ACT', mc.BankHistory[bg].SinceActivate, mc.BankHistory[bg + 1].SinceActivate, mc.BankHistory[bg + 2].SinceActivate, mc.BankHistory[bg + 3].SinceActivate));
