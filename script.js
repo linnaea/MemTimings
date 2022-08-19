@@ -431,6 +431,7 @@ var MemoryController = /** @class */ (function () {
                     if (bankState.StateCycles + this.tCR > this.tRP) {
                         bankState.State = BankStateEnum.Idle;
                         bankState.StateCycles = 0;
+                        bankState.WillPrecharge = false;
                     }
                     break;
                 case BankStateEnum.Active:
