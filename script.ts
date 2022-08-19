@@ -512,11 +512,10 @@ class MemoryController {
         }
 
         for (let i = 0; i < MemoryController.BANKS; i++) {
-            const bankNum = (i + (this.currentCycle >> 3)) & (MemoryController.BANKS - 1);
-            const bankQueue = this.BankCmdQueue[bankNum];
-            const bankState = this.BankState[bankNum];
-            const bankHistory = this.BankHistory[bankNum];
-            const groupHistory = this.GroupHistory[bankNum >> 2];
+            const bankQueue = this.BankCmdQueue[i];
+            const bankState = this.BankState[i];
+            const bankHistory = this.BankHistory[i];
+            const groupHistory = this.GroupHistory[i >> 2];
             let dqsSchedule;
 
             bankQueue.StartIssueCheck();
@@ -604,18 +603,27 @@ class MemoryController {
 
         if (!allBankCommand) {
             for (let i = 0; i < MemoryController.BANKS; i++) {
-                if (!this.BankCmdQueue[i].CanIssue) continue;
+                const bankNum = (i + (this.currentCycle >> 3)) & ((1 << (2 + this.bgBits)) - 1);
+                const bankHistory = this.BankHistory[bankNum];
+                const bankQueue = this.BankCmdQueue[bankNum];
+                if (!bankQueue.CanIssue) continue;
 
-                const cmd = this.BankCmdQueue[i].FirstCommand;
+                const cmd = bankQueue.FirstCommand;
                 if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge) continue;
                 if (cmd.Command === MemCommandEnum.REF) continue;
-                this.BankCmdQueue[i].DequeueCommand();
+                bankQueue.DequeueCommand();
 
-                if (this.UseAutoPrecharge && (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE)) {
-                    if (!this.BankCmdQueue[i].Empty && this.BankCmdQueue[i].FirstCommand.Command === MemCommandEnum.PRE && !this.BankCmdQueue[i].FirstCommand.AutoPrecharge) {
-                        cmd.AutoPrecharge = true;
-                        this.BankCmdQueue[i].DequeueCommand();
-                    }
+                let canAutoPrecharge = this.UseAutoPrecharge;
+                canAutoPrecharge &&= cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
+                canAutoPrecharge &&= bankQueue.FirstCommand?.Command === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge;
+                if (cmd.Command === MemCommandEnum.READ) {
+                    const tWTRa = this.tWR - this.tRTP;
+                    canAutoPrecharge &&= bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa;
+                }
+
+                if (canAutoPrecharge) {
+                    cmd.AutoPrecharge = true;
+                    bankQueue.DequeueCommand();
                 }
 
                 this.issueCommand(cmd);

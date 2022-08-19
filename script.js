@@ -377,6 +377,7 @@ var MemoryController = /** @class */ (function () {
         }
     };
     MemoryController.prototype.DoCycle = function () {
+        var _a;
         if (this.currentCommand) {
             if (!this.currentCommand.NotLatched) {
                 this.currentCommand = null;
@@ -439,7 +440,7 @@ var MemoryController = /** @class */ (function () {
         if (this.sinceRefresh < 4 * this.tREFI) {
             if (this.imcCommandQueue.length) {
                 var imcCommand = this.imcCommandQueue.shift();
-                var _a = MemoryController.MapAddress(imcCommand.Address, this.bgBits), group = _a[0], bank = _a[1], row = _a[2], column = _a[3];
+                var _b = MemoryController.MapAddress(imcCommand.Address, this.bgBits), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
                 var bankNum = MemoryController.BankNum(group, bank);
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (bankQueue.OpenRow !== row) {
@@ -457,11 +458,10 @@ var MemoryController = /** @class */ (function () {
             this.maybeEnqueueRefresh();
         }
         for (var i = 0; i < MemoryController.BANKS; i++) {
-            var bankNum = (i + (this.currentCycle >> 3)) & (MemoryController.BANKS - 1);
-            var bankQueue = this.BankCmdQueue[bankNum];
-            var bankState = this.BankState[bankNum];
-            var bankHistory = this.BankHistory[bankNum];
-            var groupHistory = this.GroupHistory[bankNum >> 2];
+            var bankQueue = this.BankCmdQueue[i];
+            var bankState = this.BankState[i];
+            var bankHistory = this.BankHistory[i];
+            var groupHistory = this.GroupHistory[i >> 2];
             var dqsSchedule = void 0;
             bankQueue.StartIssueCheck();
             bankQueue.IssueCheck(this.currentCommand === null, "C/A bus available");
@@ -536,19 +536,27 @@ var MemoryController = /** @class */ (function () {
         }
         if (!allBankCommand) {
             for (var i = 0; i < MemoryController.BANKS; i++) {
-                if (!this.BankCmdQueue[i].CanIssue)
+                var bankNum = (i + (this.currentCycle >> 3)) & ((1 << (2 + this.bgBits)) - 1);
+                var bankHistory = this.BankHistory[bankNum];
+                var bankQueue = this.BankCmdQueue[bankNum];
+                if (!bankQueue.CanIssue)
                     continue;
-                var cmd = this.BankCmdQueue[i].FirstCommand;
+                var cmd = bankQueue.FirstCommand;
                 if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge)
                     continue;
                 if (cmd.Command === MemCommandEnum.REF)
                     continue;
-                this.BankCmdQueue[i].DequeueCommand();
-                if (this.UseAutoPrecharge && (cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE)) {
-                    if (!this.BankCmdQueue[i].Empty && this.BankCmdQueue[i].FirstCommand.Command === MemCommandEnum.PRE && !this.BankCmdQueue[i].FirstCommand.AutoPrecharge) {
-                        cmd.AutoPrecharge = true;
-                        this.BankCmdQueue[i].DequeueCommand();
-                    }
+                bankQueue.DequeueCommand();
+                var canAutoPrecharge = this.UseAutoPrecharge;
+                canAutoPrecharge && (canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE);
+                canAutoPrecharge && (canAutoPrecharge = ((_a = bankQueue.FirstCommand) === null || _a === void 0 ? void 0 : _a.Command) === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge);
+                if (cmd.Command === MemCommandEnum.READ) {
+                    var tWTRa = this.tWR - this.tRTP;
+                    canAutoPrecharge && (canAutoPrecharge = bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa);
+                }
+                if (canAutoPrecharge) {
+                    cmd.AutoPrecharge = true;
+                    bankQueue.DequeueCommand();
                 }
                 this.issueCommand(cmd);
                 break;

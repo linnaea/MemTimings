@@ -66,23 +66,38 @@
         }
 
         #timings {
-            width: 12em;
             float: right;
         }
-        #timings tr > :nth-child(3) {
+
+        #timings table {
+            width: 59em;
+        }
+
+        #timings input.collapse {
+            appearance: none;
+            text-decoration: underline;
+            color: darkblue;
+            cursor: pointer;
+            display: block;
+        }
+
+        #timings input.collapse::after {
+            content: ">>> Collapse";
+        }
+
+        #timings input.collapse:checked::after {
+            content: "<<< Expand";
+        }
+
+        #timings input.collapse:checked ~ table {
+            width: 11.25em;
+        }
+
+        #timings input.collapse:checked ~ table tr > :nth-child(3) {
             display: none;
         }
 
-        @media (min-width: 1550px) {
-            #timings {
-                width: 59em;
-            }
-            #timings tr > :nth-child(3) {
-                display: table-cell;
-            }
-        }
-
-        @media (min-width: 1600px) {
+        @media (min-width: 900px) {
             #cycleTable .actCol, #cycleTable .a17Col {
                 border: 1px black solid;
                 padding: 1px;
@@ -94,6 +109,7 @@
 <body>
 <div>
     <div id="timings">
+        <input type="checkbox" class="collapse" checked />
         <table>
             <tr>
                 <th>Timing</th>
@@ -227,7 +243,8 @@
                     CAS-to-CAS Delay Long<br>
                     READ/WRITE-to-READ/WRITE command period to different bank in same bank group.<br>
                     Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
-                    On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_sg.
+                    On Intel platforms it's split into RdRd/WrWr/RdWr/WrRd_sg.<br>
+                    On AMD platforms it's split into RdRdScL/WrWrScL and probably RdWr.
                 </td>
             </tr>
             <tr>
@@ -237,7 +254,8 @@
                     CAS-to-CAS Delay Short<br>
                     READ/WRITE-to-READ/WRITE command period to different bank group.<br>
                     Wait this many cycles before reading from/writing to another bank group.<br>
-                    On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_dg.
+                    On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_dg.<br>
+                    On AMD platforms it's split into RdRdSc/WrWrSc and probably WrRd.
                 </td>
             </tr>
             <tr>
@@ -321,7 +339,8 @@
                 <td><input id="gearDown" type="checkbox" /></td>
                 <td>
                     Gear-Down Mode (DDR4)<br>
-                    Latch Command/Address every other cycle only.
+                    Latch Command/Address every other cycle only.<br>
+                    tCL/tWR/tRTP must be even when enabled.
                 </td>
             </tr>
         </table>
