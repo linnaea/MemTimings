@@ -86,6 +86,8 @@ class BankState {
 }
 
 class CommandQueue {
+    private readonly tCR: number;
+    private readonly commandCycleMap: Record<MemCommandEnum, number>;
     private readonly queue: MemCommand[];
     private openRow: number;
 
@@ -100,7 +102,9 @@ class CommandQueue {
     get CanIssue(): boolean { return this.canIssue; }
     public DequeueCommand(): MemCommand { return this.queue.shift(); }
 
-    public constructor() {
+    public constructor(tCR: number, commandCycleMap: Record<MemCommandEnum, number>) {
+        this.tCR = tCR;
+        this.commandCycleMap = commandCycleMap;
         this.queue = [];
         this.openRow = null;
         this.StartIssueCheck();
@@ -130,7 +134,8 @@ class CommandQueue {
     }
 
     public TimingCheck(toCheck, target, name, desc) {
-        this.IssueCheck(toCheck > target, `${desc}: ${toCheck} > ${target}(${name})`);
+        let commandCycles = this.tCR * this.commandCycleMap[this.CheckCmd.Command];
+        this.IssueCheck((toCheck + commandCycles) > target, `${desc}: ${toCheck} + ${commandCycles}(tCR) > ${target}(${name})`);
     }
 }
 
@@ -194,6 +199,7 @@ class MemoryController {
     private readonly tCR: number;
     private readonly bgBits: number;
     private readonly gearDown: boolean;
+    private readonly commandCycleMap: Record<MemCommandEnum, number>;
     public UseAutoPrecharge: boolean;
 
     public readonly BankState: BankState[];
@@ -220,7 +226,8 @@ class MemoryController {
     public constructor(tCL: number, tCWL: number, tRCD: number, tRP: number, tRAS: number, tRC: number,
                        tRRDs: number, tRRDl: number, tFAW: number, tWTRs: number, tWTRl: number,
                        tWR: number, tRTP: number, tCCDl: number, tCCDs: number,
-                       tREFI: number, tRFC: number, tCR: number, gdm: boolean, bgBits: number) {
+                       tREFI: number, tRFC: number, tCR: number, gdm: boolean, bgBits: number,
+                       commandCycleMap?: Partial<Record<MemCommandEnum, number>>) {
         this.tCL = tCL;
         this.tCWL = tCWL;
         this.tRCD = tRCD;
@@ -244,6 +251,15 @@ class MemoryController {
         this.tCR = tCR;
         this.gearDown = gdm;
 
+        commandCycleMap ??= {};
+        this.commandCycleMap = {
+            [MemCommandEnum.PRE]: commandCycleMap[MemCommandEnum.PRE] ?? 1,
+            [MemCommandEnum.ACT]: commandCycleMap[MemCommandEnum.ACT] ?? 1,
+            [MemCommandEnum.REF]: commandCycleMap[MemCommandEnum.REF] ?? 1,
+            [MemCommandEnum.READ]: commandCycleMap[MemCommandEnum.READ] ?? 1,
+            [MemCommandEnum.WRITE]: commandCycleMap[MemCommandEnum.WRITE] ?? 1
+        };
+
         this.currentCycle = 0;
         this.currentCommand = null;
         this.sinceRefresh = 0;
@@ -255,10 +271,14 @@ class MemoryController {
         this.GroupHistory = [new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),];
 
         this.BankCmdQueue = [
-            new CommandQueue(),new CommandQueue(),new CommandQueue(),new CommandQueue(),
-            new CommandQueue(),new CommandQueue(),new CommandQueue(),new CommandQueue(),
-            new CommandQueue(),new CommandQueue(),new CommandQueue(),new CommandQueue(),
-            new CommandQueue(),new CommandQueue(),new CommandQueue(),new CommandQueue(),];
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
+            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),];
 
         this.BankHistory = [
             new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),
@@ -292,7 +312,7 @@ class MemoryController {
     }
 
     private scheduleDqs(cmd: MemCommand, dryRun: boolean): [boolean, number, number] {
-        const delay = ((cmd.Command === MemCommandEnum.READ) ? this.tCL : this.tCWL) + this.tCR - 1;
+        const delay = ((cmd.Command === MemCommandEnum.READ) ? this.tCL : this.tCWL) + (this.tCR * this.commandCycleMap[cmd.Command]) - 1;
         let prevDqs: DqsSchedule = this.dqsSchedule.length ? this.dqsSchedule[this.dqsSchedule.length - 1] : null;
         let nextDqs: DqsSchedule = null;
         let i: number;
@@ -360,8 +380,9 @@ class MemoryController {
         const bankState = this.BankState[cmd.BankNum];
         const bankHistory = this.BankHistory[cmd.BankNum];
         const groupHistory = this.GroupHistory[cmd.BankGroup];
+        const commandCycles = this.tCR * this.commandCycleMap[cmd.Command];
 
-        cmd.NotLatched = this.tCR - 1;
+        cmd.NotLatched = commandCycles - 1;
         this.currentCommand = cmd;
 
         switch (cmd.Command) {
@@ -369,19 +390,19 @@ class MemoryController {
                 this.sinceRefresh -= this.tREFI;
                 for (let i = 0; i < MemoryController.BANKS; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
-                    this.BankState[i].StateCycles = 1 - this.tCR;
+                    this.BankState[i].StateCycles = 1 - commandCycles;
                 }
                 break;
             case MemCommandEnum.PRE:
                 if (!cmd.AutoPrecharge) {
                     bankState.State = BankStateEnum.Precharging;
-                    bankState.StateCycles = 1 - this.tCR;
+                    bankState.StateCycles = 1 - commandCycles;
                     bankState.CurrentOpenRow = null;
                 } else {
                     for (let i = 0; i < MemoryController.BANKS; i++) {
                         if (this.BankState[i].State === BankStateEnum.Active && !this.BankState[i].WriteTxs) {
                             this.BankState[i].State = BankStateEnum.Precharging;
-                            this.BankState[i].StateCycles = 1 - this.tCR;
+                            this.BankState[i].StateCycles = 1 - commandCycles;
                             this.BankState[i].CurrentOpenRow = null;
                         }
                     }
@@ -389,26 +410,26 @@ class MemoryController {
                 break;
             case MemCommandEnum.ACT:
                 bankState.State = BankStateEnum.Activating;
-                bankState.StateCycles = 1 - this.tCR;
+                bankState.StateCycles = 1 - commandCycles;
                 bankState.CurrentOpenRow = cmd.Address;
-                bankHistory.SinceActivate = 1 - this.tCR;
-                groupHistory.SinceActivate = 1 - this.tCR;
-                this.RankHistory.SinceActivate = 1 - this.tCR;
+                bankHistory.SinceActivate = 1 - commandCycles;
+                groupHistory.SinceActivate = 1 - commandCycles;
+                this.RankHistory.SinceActivate = 1 - commandCycles;
                 this.fawTracking.push(0);
                 break;
             case MemCommandEnum.READ:
                 bankState.WillPrecharge = cmd.AutoPrecharge;
-                bankHistory.SinceRead = 1 - this.tCR;
-                groupHistory.SinceRead = 1 - this.tCR;
-                this.RankHistory.SinceRead = 1 - this.tCR;
+                bankHistory.SinceRead = 1 - commandCycles;
+                groupHistory.SinceRead = 1 - commandCycles;
+                this.RankHistory.SinceRead = 1 - commandCycles;
                 this.scheduleDqs(cmd, false);
                 break;
             case MemCommandEnum.WRITE:
                 bankState.WillPrecharge = cmd.AutoPrecharge;
                 bankState.WriteTxs++;
-                bankHistory.SinceWrite = 1 - this.tCR;
-                groupHistory.SinceWrite = 1 - this.tCR;
-                this.RankHistory.SinceWrite = 1 - this.tCR;
+                bankHistory.SinceWrite = 1 - commandCycles;
+                groupHistory.SinceWrite = 1 - commandCycles;
+                this.RankHistory.SinceWrite = 1 - commandCycles;
                 this.scheduleDqs(cmd, false);
                 break;
         }
@@ -499,10 +520,11 @@ class MemoryController {
         }
 
         for (let i = 0; i < MemoryController.BANKS; i++) {
-            const bankQueue = this.BankCmdQueue[i];
-            const bankState = this.BankState[i];
-            const bankHistory = this.BankHistory[i];
-            const groupHistory = this.GroupHistory[i >> 2];
+            const bankNum = (i + (this.currentCycle >> 3)) & (MemoryController.BANKS - 1);
+            const bankQueue = this.BankCmdQueue[bankNum];
+            const bankState = this.BankState[bankNum];
+            const bankHistory = this.BankHistory[bankNum];
+            const groupHistory = this.GroupHistory[bankNum >> 2];
             let dqsSchedule;
 
             bankQueue.StartIssueCheck();
@@ -516,14 +538,14 @@ class MemoryController {
                 switch(cmd.Command) {
                     case MemCommandEnum.ACT:
                         bankQueue.IssueCheck(bankState.State === BankStateEnum.Idle, "Bank idle");
-                        bankQueue.TimingCheck(bankHistory.SinceActivate + this.tCR, this.tRC, "tRC", "Since ACT in bank");
-                        bankQueue.TimingCheck(groupHistory.SinceActivate + this.tCR, this.tRRDl, "tRRD_L", "Since ACT in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceActivate + this.tCR, this.tRRDs, "tRRD_S", "Since ACT in rank");
+                        bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
+                        bankQueue.TimingCheck(groupHistory.SinceActivate, this.tRRDl, "tRRD_L", "Since ACT in group");
+                        bankQueue.TimingCheck(this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
                         bankQueue.IssueCheck(this.fawTracking.length < 4, `ACTs in rank in tFAW: [${this.fawTracking.join(', ')}]`);
                         break;
                     case MemCommandEnum.REF:
                         bankQueue.IssueCheck(bankState.State === BankStateEnum.Idle, "Bank idle");
-                        bankQueue.TimingCheck(bankHistory.SinceActivate + this.tCR, this.tRC, "tRC", "Since ACT in bank");
+                        bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
                         break;
                     case MemCommandEnum.PRE:
                         if (cmd.AutoPrecharge) {
@@ -536,21 +558,21 @@ class MemoryController {
                         }
 
                         bankQueue.IssueCheck(!bankState.WriteTxs, `In-flight WRITEs: ${bankState.WriteTxs}`);
-                        bankQueue.TimingCheck(bankHistory.SinceActivate + this.tCR, this.tRAS, "tRAS", "Since ACT");
-                        bankQueue.TimingCheck(bankHistory.SinceRead + this.tCR, this.tRTP, "tRTP", "Since READ");
-                        bankQueue.TimingCheck(bankHistory.SinceWriteData + this.tCR, this.tWR, "tWR", "Since WRITE Tx");
+                        bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRAS, "tRAS", "Since ACT");
+                        bankQueue.TimingCheck(bankHistory.SinceRead, this.tRTP, "tRTP", "Since READ");
+                        bankQueue.TimingCheck(bankHistory.SinceWriteData, this.tWR, "tWR", "Since WRITE Tx");
                         break;
                     case MemCommandEnum.READ:
                         bankQueue.IssueCheck(bankState.State === BankStateEnum.Active, "Bank active");
                         bankQueue.IssueCheck(!bankState.WriteTxs, `In-flight WRITEs: ${bankState.WriteTxs}`);
 
-                        bankQueue.TimingCheck(groupHistory.SinceRead + this.tCR, this.tCCDl, "tCCD_L/tRdRd_sg/tRdRdScL", "Since READ in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWrite + this.tCR, this.tCCDl, "tCCD_L/tWrRd_sg/tWrRd", "Since WRITE in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWriteData + this.tCR, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
+                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdRd_sg/tRdRdScL", "Since READ in group");
+                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrRd_sg/tWrRd", "Since WRITE in group");
+                        bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
 
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead + this.tCR, this.tCCDs, "tCCD_S/tRdRd_dg/tRdRdSc", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite + this.tCR, this.tCCDs, "tCCD_S/tWrRd_dg/tWrRd", "Since WRITE in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWriteData + this.tCR, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdRd_dg/tRdRdSc", "Since READ in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrRd_dg/tWrRd", "Since WRITE in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], `DQS available for ${dqsSchedule[1]} cycles after ${dqsSchedule[2]} cycles`);
@@ -558,11 +580,11 @@ class MemoryController {
                     case MemCommandEnum.WRITE:
                         bankQueue.IssueCheck(bankState.State === BankStateEnum.Active, "Bank is active");
 
-                        bankQueue.TimingCheck(groupHistory.SinceRead + this.tCR, this.tCCDl, "tCCD_L/tRdWr_sg/tRdWr", "Since READ in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWrite + this.tCR, this.tCCDl, "tCCD_L/tWrWr_sg/tWrWrScL", "Since WRITE in group");
+                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdWr_sg/tRdWr", "Since READ in group");
+                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrWr_sg/tWrWrScL", "Since WRITE in group");
 
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead + this.tCR, this.tCCDs, "tCCD_S/tRdWr_dg/tRdWr", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite + this.tCR, this.tCCDs, "tCCD_S/tWrWr_dg/tWrWrSc", "Since WRITE in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdWr_dg/tRdWr", "Since READ in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrWr_dg/tWrWrSc", "Since WRITE in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], `DQS available for ${dqsSchedule[1]} cycles after ${dqsSchedule[2]} cycles`);
@@ -669,7 +691,8 @@ class MemoryController {
 
 function $x(e) { return document.getElementById(e); }
 function toHex(v: number, len: number): string {
-    if (v === null || v === undefined) return <any>v;
+    if (v === null) return null;
+    if (v === undefined) return undefined;
 
     let s = v.toString(16).toUpperCase();
     while (s.length < len) s = '0' + s;
@@ -776,6 +799,7 @@ const allParams = [
     'tREFI',
     'tRFC',
     'tCR',
+    'ddr5',
     'gearDown',
     'bgBits',
     'cycles',
@@ -835,8 +859,14 @@ let mc: MemoryController;
 let mcCommands: ImcCommand[];
 
 function createController() {
-    mcCommands = getImcCommands();
+    let commandCycleMap: Partial<Record<MemCommandEnum, number>> = {};
+    if ((<HTMLInputElement>$x('ddr5')).checked) {
+        commandCycleMap[MemCommandEnum.ACT] = 2;
+        commandCycleMap[MemCommandEnum.READ] = 2;
+        commandCycleMap[MemCommandEnum.WRITE] = 2;
+    }
 
+    mcCommands = getImcCommands();
     mc = new MemoryController(
         parseInt((<HTMLInputElement>$x('tCL')).value),
         parseInt((<HTMLInputElement>$x('tCWL')).value),
@@ -858,6 +888,7 @@ function createController() {
         parseInt((<HTMLInputElement>$x('tCR')).value),
         (<HTMLInputElement>$x('gearDown')).checked,
         parseInt((<HTMLInputElement>$x('bgBits')).value),
+        commandCycleMap
     );
 
     mc.UseAutoPrecharge = !!(<HTMLInputElement>$x('useAP')).checked;

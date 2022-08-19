@@ -298,24 +298,30 @@
                 <td>
                     Command Rate<br>
                     Hold Command/Address signals for this many cycles.<br>
-                    C/A is latched into memory at the end of signaling.<br>
-                    Use 2 to simulate 1N DDR5, 4 for 2N DDR5.
-                </td>
-            </tr>
-            <tr>
-                <td>Gear-Down</td>
-                <td><input id="gearDown" type="checkbox" /></td>
-                <td>
-                    Gear-Down Mode<br>
-                    Latch Command/Address every other cycle only.<br>
-                    Only valid for DDR4.
+                    C/A is latched into memory at the end of signaling.
                 </td>
             </tr>
             <tr>
                 <td>BG Bits</td>
                 <td><input id="bgBits" type="number" value="2" /></td>
                 <td>
-                    Use 1 to simulate x16 memory, 0 for DDR3.
+                    Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+                </td>
+            </tr>
+            <tr>
+                <td>DDR5</td>
+                <td><input id="ddr5" type="checkbox" /></td>
+                <td>
+                    Try to emulate DDR5 (2 cycle ACT/READ/WRITE).<br>
+                    Command scheduling will be extra bad.
+                </td>
+            </tr>
+            <tr>
+                <td>Gear-Down</td>
+                <td><input id="gearDown" type="checkbox" /></td>
+                <td>
+                    Gear-Down Mode (DDR4)<br>
+                    Latch Command/Address every other cycle only.
                 </td>
             </tr>
         </table>
