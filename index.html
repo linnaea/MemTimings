@@ -4,8 +4,21 @@
     <meta charset="UTF-8">
     <title>I'm a bad DDR SDRAM controller</title>
     <style>
+        html {
+            font-family: monospace;
+            font-size: larger;
+        }
         input[type=number] {
             width: 4.5em;
+        }
+        table {
+            border-spacing: 0;
+            border: 1px black solid;
+        }
+        td, th {
+            margin: 0;
+            padding: 1px;
+            border: 1px black solid;
         }
         td.latching {
             background-color: #ccc;
@@ -14,7 +27,7 @@
             background-color: #999;
         }
         td.logT {
-            background-color: #af9;
+            background-color: #9fa;
         }
         td.logF {
             background-color: #f9a;
@@ -47,25 +60,41 @@
         }
         #cycleTable .actCol, #cycleTable .a17Col {
             border: 0;
-            margin: 0;
             padding: 0;
             max-width: 0;
             overflow: hidden;
         }
 
         #timings {
-            width: 15em;
+            width: 12em;
             float: right;
         }
         #timings tr > :nth-child(3) {
             display: none;
+        }
+
+        @media (min-width: 1500px) {
+            #timings {
+                width: 59em;
+            }
+            #timings tr > :nth-child(3) {
+                display: table-cell;
+            }
+        }
+
+        @media (min-width: 1555px) {
+            #cycleTable .actCol, #cycleTable .a17Col {
+                border: 1px black solid;
+                padding: 1px;
+                max-width: unset;
+            }
         }
     </style>
 </head>
 <body>
 <div>
     <div id="timings">
-        <table border="1" cellspacing="0">
+        <table>
             <tr>
                 <th>Timing</th>
                 <th>Value</th>
@@ -283,23 +312,24 @@
                 </td>
             </tr>
             <tr>
-                <td>x16 Memory</td>
-                <td><input id="x16" type="checkbox" /></td>
+                <td>BG Bits</td>
+                <td><input id="bgBits" type="number" value="2" /></td>
                 <td>
-                    x16 wide memory chips<br>
-                    Halves the number of bank groups.
+                    Use 1 to simulate x16 memory, 0 for DDR3.
                 </td>
             </tr>
         </table>
     </div>
     <div>
-        Run <input id="cycles" type="number" value="2000" max="999999" /> Cycles
-        <button id="go">Go</button>
         <input id="allCycles" type="checkbox" />Show NO-OP cycles
         <input id="useAP" type="checkbox" />Use Auto-Precharge
+        <br>
+        <button id="go">Run</button> <input id="cycles" type="number" value="2000" max="999999" /> Cycles
+        <button id="step">Single Step</button>
+        <button id="reset">Reset</button>
         <div>&nbsp;</div>
 
-        <table id="cmdTable" border="1" cellspacing="0">
+        <table id="cmdTable">
             <thead>
             <tr>
                 <th>Cycle</th>
@@ -314,7 +344,7 @@
         </table>
 
         <div>&nbsp;</div>
-        <table id="cycleTable" border="1" cellspacing="0">
+        <table id="cycleTable">
             <thead>
             <tr>
                 <th>Cycle</th>
@@ -336,6 +366,9 @@
 
             </tbody>
         </table>
+
+        <div id="stateDump">
+        </div>
     </div>
 </div>
 <div style="clear: both">&nbsp;</div>
