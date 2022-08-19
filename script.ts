@@ -175,7 +175,8 @@ class DqsSchedule {
 }
 
 class MemoryController {
-    private static readonly BANKS = 16;
+    private static readonly BANKS = 32;
+    private static readonly GROUPS = 8;
 
     private readonly tCL: number;
     private readonly tCWL: number;
@@ -268,29 +269,19 @@ class MemoryController {
         this.dqsSchedule = [];
         this.RankHistory = new CommandHistory();
 
-        this.GroupHistory = [new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),];
+        this.GroupHistory = [];
+        for (let i = 0; i < MemoryController.GROUPS; i++) {
+            this.GroupHistory.push(new CommandHistory());
+        }
 
-        this.BankCmdQueue = [
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap),new CommandQueue(tCR, this.commandCycleMap),];
-
-        this.BankHistory = [
-            new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),
-            new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),
-            new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),
-            new CommandHistory(),new CommandHistory(),new CommandHistory(),new CommandHistory(),];
-
-        this.BankState = [
-            new BankState(),new BankState(),new BankState(),new BankState(),
-            new BankState(),new BankState(),new BankState(),new BankState(),
-            new BankState(),new BankState(),new BankState(),new BankState(),
-            new BankState(),new BankState(),new BankState(),new BankState(),];
+        this.BankCmdQueue = [];
+        this.BankHistory = [];
+        this.BankState = [];
+        for (let i = 0; i < MemoryController.BANKS; i++) {
+            this.BankCmdQueue.push(new CommandQueue(tCR, this.commandCycleMap));
+            this.BankHistory.push(new CommandHistory());
+            this.BankState.push(new BankState());
+        }
     }
 
     public EnqueueCommand(cmd: ImcCommand): void {

@@ -218,29 +218,18 @@ var MemoryController = /** @class */ (function () {
         this.imcCommandQueue = [];
         this.dqsSchedule = [];
         this.RankHistory = new CommandHistory();
-        this.GroupHistory = [new CommandHistory(), new CommandHistory(), new CommandHistory(), new CommandHistory(),];
-        this.BankCmdQueue = [
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-            new CommandQueue(tCR, this.commandCycleMap), new CommandQueue(tCR, this.commandCycleMap),
-        ];
-        this.BankHistory = [
-            new CommandHistory(), new CommandHistory(), new CommandHistory(), new CommandHistory(),
-            new CommandHistory(), new CommandHistory(), new CommandHistory(), new CommandHistory(),
-            new CommandHistory(), new CommandHistory(), new CommandHistory(), new CommandHistory(),
-            new CommandHistory(), new CommandHistory(), new CommandHistory(), new CommandHistory(),
-        ];
-        this.BankState = [
-            new BankState(), new BankState(), new BankState(), new BankState(),
-            new BankState(), new BankState(), new BankState(), new BankState(),
-            new BankState(), new BankState(), new BankState(), new BankState(),
-            new BankState(), new BankState(), new BankState(), new BankState(),
-        ];
+        this.GroupHistory = [];
+        for (var i = 0; i < MemoryController.GROUPS; i++) {
+            this.GroupHistory.push(new CommandHistory());
+        }
+        this.BankCmdQueue = [];
+        this.BankHistory = [];
+        this.BankState = [];
+        for (var i = 0; i < MemoryController.BANKS; i++) {
+            this.BankCmdQueue.push(new CommandQueue(tCR, this.commandCycleMap));
+            this.BankHistory.push(new CommandHistory());
+            this.BankState.push(new BankState());
+        }
     }
     Object.defineProperty(MemoryController.prototype, "CurrentCycle", {
         get: function () { return this.currentCycle; },
@@ -615,7 +604,8 @@ var MemoryController = /** @class */ (function () {
         return addr;
     };
     MemoryController.BankNum = function (group, bank) { return (group << 2) | bank; };
-    MemoryController.BANKS = 16;
+    MemoryController.BANKS = 32;
+    MemoryController.GROUPS = 8;
     return MemoryController;
 }());
 function $x(e) { return document.getElementById(e); }
