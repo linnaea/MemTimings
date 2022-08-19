@@ -216,14 +216,6 @@ class MemoryController {
     get CurrentCommand(): MemCommand { return this.currentCommand; }
     get DqsActive(): boolean { return this.dqsActive; }
     get DqActive(): [MemCommandEnum, number, number, number, number] { return this.dqActive; }
-    get DqAddress(): number {
-        if(!this.dqActive) return null;
-        let addr = this.dqActive[4];
-        addr |= this.dqActive[3] << 10;
-        addr |= this.dqActive[2] << 12;
-        addr |= this.dqActive[1] << (12 + this.bgBits);
-        return addr;
-    }
 
     public constructor(tCL: number, tCWL: number, tRCD: number, tRP: number, tRAS: number, tRC: number,
                        tRRDs: number, tRRDl: number, tFAW: number, tWTRs: number, tWTRl: number,
@@ -487,7 +479,8 @@ class MemoryController {
         if (this.sinceRefresh < 4 * this.tREFI) {
             if (this.imcCommandQueue.length) {
                 const imcCommand = this.imcCommandQueue.shift();
-                const [bankNum, row, column] = MemoryController.MapAddress(imcCommand.Address, this.bgBits);
+                const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.bgBits);
+                const bankNum = MemoryController.BankNum(group, bank);
                 const bankQueue = this.BankCmdQueue[bankNum];
 
                 if (bankQueue.OpenRow !== row) {
@@ -634,7 +627,7 @@ class MemoryController {
                 case -2:
                 case -1:
                 case 0:
-                    this.dqActive = [dqs.Command.Command, dqs.RowNumber, dqs.Command.BankGroup, dqs.Command.Bank, dqs.Command.Address - dqs.DueCycles * 2];
+                    this.dqActive = [dqs.Command.Command, dqs.Command.BankGroup, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
                     this.dqsActive = true;
                     break;
                 case 1:
@@ -645,14 +638,33 @@ class MemoryController {
         }
     }
 
-    public static MapAddress(addr: number, bgBits: number) : [number, number, number] {
-        const column = addr & 0x3F8;
-        addr >>>= 10;
-        const bankNum = addr & ((1 << (bgBits + 2)) - 1);
-        const row = addr >> (2 + bgBits);
+    public static MapAddress(addr: number, bgBits: number) : [number, number, number, number] {
+        addr >>>= 3;
+        const group = addr & ((1 << bgBits) - 1);
+        addr >>>= bgBits;
+        const column = (addr & 0x7F) << 3;
+        addr >>>= 7;
+        const bank = addr & 3;
+        addr >>>= 2;
+        const row = addr;
 
-        return [bankNum, row, column];
+        return [group, bank, row, column];
     }
+
+    public MapMemArray(mem: [number, number, number, number]) : number {
+        let addr = mem[2];
+        addr <<= 2;
+        addr |= mem[1];
+        addr <<= 7;
+        addr |= mem[3] >>> 3;
+        addr <<= this.bgBits;
+        addr |= mem[0];
+        addr <<= 3;
+
+        return addr;
+    }
+
+    public static BankNum(group, bank) { return (group << 2) | bank; }
 }
 
 function $x(e) { return document.getElementById(e); }
@@ -694,9 +706,7 @@ function addCmdRow() {
 
     function updateMapAddr() {
         const addr = parseInt(addrInput.value, 16);
-        const [bankNum, aRow, col] = MemoryController.MapAddress(addr, parseInt((<HTMLInputElement>$x('bgBits')).value));
-        const bankGroup = bankNum >> 2;
-        const bank = bankNum & 3;
+        const [bankGroup, bank, aRow, col] = MemoryController.MapAddress(addr, parseInt((<HTMLInputElement>$x('bgBits')).value));
         mapAddrCell.innerText = `${bankGroup}/${bank}/${toHex(aRow, 5)}/${toHex(col, 3)}`;
 
         if (!row.isConnected) {
@@ -1023,8 +1033,11 @@ function renderCycleRow() {
     row.appendChild(cell);
 
     let dq: string[] = ['', ''];
-    dq[0] = (mc.DqActive && mc.DqActive[0] === MemCommandEnum.READ) ? 'R' : 'W';
-    dq[1] = toHex(mc.DqAddress ?? 0, 8);
+    if (mc.DqActive) {
+        dq[0] = (mc.DqActive && mc.DqActive[0] === MemCommandEnum.READ) ? 'R' : 'W';
+        // @ts-ignore
+        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 8);
+    }
     cell = document.createElement('td');
     cell.innerText = mc.DqActive ? dq.join(' ') : '';
     cell.className = mc.DqActive ? 'active' : 'inactive';
