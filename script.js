@@ -178,10 +178,11 @@ var DqsSchedule = /** @class */ (function () {
     return DqsSchedule;
 }());
 var AddressMapConfig = /** @class */ (function () {
-    function AddressMapConfig(bg, ba, ca) {
+    function AddressMapConfig(bg, ba, ca, bl) {
         this.BG = bg;
         this.BA = ba;
         this.CA = ca;
+        this.BL = bl;
         this.Groups = 1 << bg;
         this.Banks = this.Groups * (1 << ba);
     }
@@ -208,7 +209,7 @@ var MemoryController = /** @class */ (function () {
         this.tCCDs = tCCDs;
         this.tREFI = tREFI;
         this.tRFC = tRFC;
-        this.addrCfg = addrCfg;
+        this.AddrCfg = addrCfg;
         this.tRPRE = 1;
         this.tWPRE = 1;
         this.tCR = tCR;
@@ -344,7 +345,7 @@ var MemoryController = /** @class */ (function () {
         switch (cmd.Command) {
             case MemCommandEnum.REF:
                 this.sinceRefresh -= this.tREFI;
-                for (var i = 0; i < this.addrCfg.Banks; i++) {
+                for (var i = 0; i < this.AddrCfg.Banks; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
                     this.BankState[i].StateCycles = 1 - commandCycles;
                 }
@@ -356,7 +357,7 @@ var MemoryController = /** @class */ (function () {
                     bankState.CurrentOpenRow = null;
                 }
                 else {
-                    for (var i = 0; i < this.addrCfg.Banks; i++) {
+                    for (var i = 0; i < this.AddrCfg.Banks; i++) {
                         if (this.BankState[i].State === BankStateEnum.Active && !this.BankState[i].WriteTxs) {
                             this.BankState[i].State = BankStateEnum.Precharging;
                             this.BankState[i].StateCycles = 1 - commandCycles;
@@ -414,7 +415,7 @@ var MemoryController = /** @class */ (function () {
         if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
             this.fawTracking.shift();
         }
-        for (var i = 0; i < this.addrCfg.Banks; i++) {
+        for (var i = 0; i < this.AddrCfg.Banks; i++) {
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
             switch (bankState.State) {
@@ -455,7 +456,7 @@ var MemoryController = /** @class */ (function () {
         if (this.sinceRefresh < 4 * this.tREFI) {
             if (this.imcCommandQueue.length) {
                 var imcCommand = this.imcCommandQueue.shift();
-                var _b = MemoryController.MapAddress(imcCommand.Address, this.addrCfg), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
+                var _b = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
                 var bankNum = MemoryController.BankNum(group, bank);
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (bankQueue.OpenRow !== row) {
@@ -472,7 +473,7 @@ var MemoryController = /** @class */ (function () {
         else {
             this.maybeEnqueueRefresh();
         }
-        for (var i = 0; i < this.addrCfg.Banks; i++) {
+        for (var i = 0; i < this.AddrCfg.Banks; i++) {
             var bankQueue = this.BankCmdQueue[i];
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
@@ -481,7 +482,7 @@ var MemoryController = /** @class */ (function () {
             bankQueue.StartIssueCheck();
             bankQueue.IssueCheck(this.currentCommand === null, "C/A bus available");
             if (this.gearDown) {
-                bankQueue.IssueCheck((this.tCR & 1) == (this.currentCycle & 1), "Gear-Down Latching Cycle");
+                bankQueue.IssueCheck((this.tCR & 1) == (this.currentCycle & 1), "Gear-Down Command Cycle");
             }
             if (!bankQueue.Empty) {
                 var cmd = bankQueue.FirstCommand;
@@ -550,8 +551,8 @@ var MemoryController = /** @class */ (function () {
             }
         }
         if (!allBankCommand) {
-            for (var i = 0; i < this.addrCfg.Banks; i++) {
-                var bankNum = ((i + (this.currentCycle >> this.addrCfg.BA)) & ((1 << this.addrCfg.BG) - 1)) << this.addrCfg.BA;
+            for (var i = 0; i < this.AddrCfg.Banks; i++) {
+                var bankNum = ((i + (this.currentCycle >> this.AddrCfg.BA)) & ((1 << this.AddrCfg.BG) - 1)) << this.AddrCfg.BA;
                 var bankHistory = this.BankHistory[bankNum];
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (!bankQueue.CanIssue)
@@ -606,15 +607,15 @@ var MemoryController = /** @class */ (function () {
     };
     MemoryController.MapAddress = function (addr, addrCfg) {
         var bgBits = addrCfg.BG;
-        addr >>>= 3;
+        addr >>>= addrCfg.BL;
         var group = 0;
         if (bgBits) {
             group = addr & 1;
             bgBits--;
             addr >>>= 1;
         }
-        var column = (addr & ((1 << (addrCfg.CA - 3)) - 1)) << 3;
-        addr >>>= addrCfg.CA - 3;
+        var column = (addr & ((1 << (addrCfg.CA - addrCfg.BL)) - 1)) << addrCfg.BL;
+        addr >>>= addrCfg.CA - addrCfg.BL;
         if (bgBits) {
             group |= (addr & 1) << 1;
             bgBits--;
@@ -631,23 +632,23 @@ var MemoryController = /** @class */ (function () {
     };
     MemoryController.prototype.MapMemArray = function (mem) {
         var addr = mem[2];
-        if (this.addrCfg.BG > 2) {
-            addr <<= this.addrCfg.BG - 2;
+        if (this.AddrCfg.BG > 2) {
+            addr <<= this.AddrCfg.BG - 2;
             addr |= mem[0] >>> 2;
         }
-        addr <<= this.addrCfg.BA;
+        addr <<= this.AddrCfg.BA;
         addr |= mem[1];
-        if (this.addrCfg.BG > 1) {
+        if (this.AddrCfg.BG > 1) {
             addr <<= 1;
             addr |= (mem[0] >>> 1) & 1;
         }
-        addr <<= this.addrCfg.CA - 3;
-        addr |= mem[3] >>> 3;
-        if (this.addrCfg.BG > 0) {
+        addr <<= this.AddrCfg.CA - this.AddrCfg.BL;
+        addr |= mem[3] >>> this.AddrCfg.BL;
+        if (this.AddrCfg.BG > 0) {
             addr <<= 1;
             addr |= mem[0] & 1;
         }
-        addr <<= 3;
+        addr <<= this.AddrCfg.BL;
         return addr;
     };
     MemoryController.BankNum = function (group, bank) { return (group << 2) | bank; };
@@ -665,7 +666,7 @@ function toHex(v, len) {
     return s;
 }
 function getAddrMapConfig() {
-    return new AddressMapConfig(parseInt($x('bgBits').value), parseInt($x('baBits').value), parseInt($x('caBits').value));
+    return new AddressMapConfig(parseInt($x('bgBits').value), parseInt($x('baBits').value), parseInt($x('caBits').value), parseInt($x('blBits').value));
 }
 function addCmdRow() {
     var row = document.createElement('tr');
@@ -695,12 +696,14 @@ function addCmdRow() {
         var _a = MemoryController.MapAddress(addr, getAddrMapConfig()), bankGroup = _a[0], bank = _a[1], aRow = _a[2], col = _a[3];
         mapAddrCell.innerText = "".concat(bankGroup, "/").concat(bank, "/").concat(toHex(aRow, 5), "/").concat(toHex(col, 3));
         if (!row.isConnected) {
+            $x('blBits').removeEventListener('change', updateMapAddr);
             $x('bgBits').removeEventListener('change', updateMapAddr);
             $x('baBits').removeEventListener('change', updateMapAddr);
             $x('caBits').removeEventListener('change', updateMapAddr);
         }
     }
     addrInput.onkeyup = updateMapAddr;
+    $x('blBits').addEventListener('change', updateMapAddr);
     $x('bgBits').addEventListener('change', updateMapAddr);
     $x('baBits').addEventListener('change', updateMapAddr);
     $x('caBits').addEventListener('change', updateMapAddr);
@@ -763,6 +766,9 @@ var allParams = [
     'ddr5',
     'gearDown',
     'bgBits',
+    'baBits',
+    'caBits',
+    'blBits',
     'cycles',
     'allCycles',
     'useAP'
@@ -1121,26 +1127,37 @@ function renderCommandQueue(cmds) {
     return container;
 }
 function renderStateDumpBankGroup(bg) {
-    var _a, _b, _c, _d;
     var container = document.createElement('div');
     var title = document.createElement('p');
     title.innerText = "Bank Group ".concat(bg);
     container.appendChild(title);
-    bg <<= 2;
-    var _e = createTableWithHead('', 'Bank 0', 'Bank 1', 'Bank 2', 'Bank 3'), table = _e[0], tbody = _e[1];
     var mc = getOrCreateController();
-    tbody.appendChild(createTableRow('State', renderState(mc.BankState[bg].State), renderState(mc.BankState[bg + 1].State), renderState(mc.BankState[bg + 2].State), renderState(mc.BankState[bg + 3].State)));
-    tbody.appendChild(createTableRow('Cycles', mc.BankState[bg].StateCycles, mc.BankState[bg + 1].StateCycles, mc.BankState[bg + 2].StateCycles, mc.BankState[bg + 3].StateCycles));
-    tbody.appendChild(createTableRow('Open Row', toHex(mc.BankState[bg].CurrentOpenRow, 5), toHex(mc.BankState[bg + 1].CurrentOpenRow, 5), toHex(mc.BankState[bg + 2].CurrentOpenRow, 5), toHex(mc.BankState[bg + 3].CurrentOpenRow, 5)));
-    tbody.appendChild(createTableRow('AP Engaged', mc.BankState[bg].WillPrecharge, mc.BankState[bg + 1].WillPrecharge, mc.BankState[bg + 2].WillPrecharge, mc.BankState[bg + 3].WillPrecharge));
-    tbody.appendChild(createTableRow('Active WRITEs', mc.BankState[bg].WriteTxs, mc.BankState[bg + 1].WriteTxs, mc.BankState[bg + 2].WriteTxs, mc.BankState[bg + 3].WriteTxs));
-    tbody.appendChild(createTableRow('Last ACT', mc.BankHistory[bg].SinceActivate, mc.BankHistory[bg + 1].SinceActivate, mc.BankHistory[bg + 2].SinceActivate, mc.BankHistory[bg + 3].SinceActivate));
-    tbody.appendChild(createTableRow('Last READ', mc.BankHistory[bg].SinceRead, mc.BankHistory[bg + 1].SinceRead, mc.BankHistory[bg + 2].SinceRead, mc.BankHistory[bg + 3].SinceRead));
-    tbody.appendChild(createTableRow('Last WRITE', mc.BankHistory[bg].SinceWrite, mc.BankHistory[bg + 1].SinceWrite, mc.BankHistory[bg + 2].SinceWrite, mc.BankHistory[bg + 3].SinceWrite));
-    tbody.appendChild(createTableRow('Last WRITE Tx', mc.BankHistory[bg].SinceWriteData, mc.BankHistory[bg + 1].SinceWriteData, mc.BankHistory[bg + 2].SinceWriteData, mc.BankHistory[bg + 3].SinceWriteData));
-    tbody.appendChild(createTableRow('Next Command', (_a = mc.BankCmdQueue[bg].CheckCmd) === null || _a === void 0 ? void 0 : _a.toString(), (_b = mc.BankCmdQueue[bg + 1].CheckCmd) === null || _b === void 0 ? void 0 : _b.toString(), (_c = mc.BankCmdQueue[bg + 2].CheckCmd) === null || _c === void 0 ? void 0 : _c.toString(), (_d = mc.BankCmdQueue[bg + 3].CheckCmd) === null || _d === void 0 ? void 0 : _d.toString()));
-    tbody.appendChild(createTableRow('Issue Check', renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks), renderIssueCheck(mc.BankCmdQueue[bg + 1].CheckCmd && mc.BankCmdQueue[bg + 1].IssueChecks), renderIssueCheck(mc.BankCmdQueue[bg + 2].CheckCmd && mc.BankCmdQueue[bg + 2].IssueChecks), renderIssueCheck(mc.BankCmdQueue[bg + 3].CheckCmd && mc.BankCmdQueue[bg + 3].IssueChecks)));
-    tbody.appendChild(createTableRow('Command Queue', renderCommandQueue(mc.BankCmdQueue[bg].AllCommand), renderCommandQueue(mc.BankCmdQueue[bg + 1].AllCommand), renderCommandQueue(mc.BankCmdQueue[bg + 2].AllCommand), renderCommandQueue(mc.BankCmdQueue[bg + 3].AllCommand)));
+    var bas = 1 << mc.AddrCfg.BA;
+    bg <<= mc.AddrCfg.BA;
+    var headers = [''];
+    for (var i = 0; i < bas; i++) {
+        headers.push("Bank ".concat(i));
+    }
+    function gatherData(sel) {
+        var r = [];
+        for (var i = 0; i < bas; i++) {
+            r.push(sel(mc, bg + i));
+        }
+        return r;
+    }
+    var _a = createTableWithHead.apply(void 0, headers), table = _a[0], tbody = _a[1];
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['State'], gatherData(function (mc, bg) { return renderState(mc.BankState[bg].State); }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Cycles'], gatherData(function (mc, bg) { return mc.BankState[bg].StateCycles; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Open Row'], gatherData(function (mc, bg) { return toHex(mc.BankState[bg].CurrentOpenRow, 5); }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['AP Engaged'], gatherData(function (mc, bg) { return mc.BankState[bg].WillPrecharge; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Active WRITEs'], gatherData(function (mc, bg) { return mc.BankState[bg].WriteTxs; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last ACT'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceActivate; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last READ'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceRead; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last WRITE'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceWrite; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last WRITE Tx'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceWriteData; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Next Command'], gatherData(function (mc, bg) { return mc.BankCmdQueue[bg].CheckCmd; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Issue Check'], gatherData(function (mc, bg) { return renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks); }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Command Queue'], gatherData(function (mc, bg) { return renderCommandQueue(mc.BankCmdQueue[bg].AllCommand); }), false)));
     container.appendChild(table);
     return container;
 }
@@ -1175,7 +1192,8 @@ function renderStateDump() {
     var dumpRoot = $x('stateDump');
     while (dumpRoot.hasChildNodes())
         dumpRoot.removeChild(dumpRoot.childNodes[0]);
-    var bgs = 1 << parseInt($x('bgBits').value);
+    var mc = getOrCreateController();
+    var bgs = 1 << mc.AddrCfg.BG;
     for (var i = 0; i < bgs; i++) {
         dumpRoot.appendChild(renderStateDumpBankGroup(i));
     }

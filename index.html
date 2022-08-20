@@ -336,14 +336,21 @@
             <td>BA Bits</td>
             <td><input id="baBits" type="number" value="2" /></td>
             <td>
-                Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+                Bank bits, usually 2 for DDR4/DDR5, 3 for DDR3, 1 on some low-capacity DDR5 memory.
             </td>
         </tr>
         <tr>
             <td>CA Bits</td>
             <td><input id="caBits" type="number" value="10" /></td>
             <td>
-                Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+                Column bits, 11 for DDR5 x4, 10 for everything else.
+            </td>
+        </tr>
+        <tr>
+            <td>BL (log2)</td>
+            <td><input id="blBits" type="number" value="3" /></td>
+            <td>
+                Use 3 for DDR3/DDR4, 4 for DDR5.
             </td>
         </tr>
         <tr>

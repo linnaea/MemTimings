@@ -178,13 +178,15 @@ class AddressMapConfig {
     public readonly BG: number;
     public readonly BA: number;
     public readonly CA: number;
+    public readonly BL: number;
     public readonly Banks: number;
     public readonly Groups: number;
 
-    public constructor(bg: number, ba: number, ca: number) {
+    public constructor(bg: number, ba: number, ca: number, bl: number) {
         this.BG = bg;
         this.BA = ba;
         this.CA = ca;
+        this.BL = bl;
         this.Groups = 1 << bg;
         this.Banks = this.Groups * (1 << ba);
     }
@@ -212,8 +214,8 @@ class MemoryController {
     private readonly tWPRE: number;
     private readonly tCR: number;
     private readonly gearDown: boolean;
-    private readonly addrCfg: AddressMapConfig;
     private readonly commandCycleMap: Record<MemCommandEnum, number>;
+    public readonly AddrCfg: AddressMapConfig;
     public UseAutoPrecharge: boolean;
 
     public readonly BankState: BankState[];
@@ -260,7 +262,7 @@ class MemoryController {
         this.tCCDs = tCCDs;
         this.tREFI = tREFI;
         this.tRFC = tRFC;
-        this.addrCfg = addrCfg;
+        this.AddrCfg = addrCfg;
         this.tRPRE = 1;
         this.tWPRE = 1;
         this.tCR = tCR;
@@ -393,7 +395,7 @@ class MemoryController {
         switch (cmd.Command) {
             case MemCommandEnum.REF:
                 this.sinceRefresh -= this.tREFI;
-                for (let i = 0; i < this.addrCfg.Banks; i++) {
+                for (let i = 0; i < this.AddrCfg.Banks; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
                     this.BankState[i].StateCycles = 1 - commandCycles;
                 }
@@ -404,7 +406,7 @@ class MemoryController {
                     bankState.StateCycles = 1 - commandCycles;
                     bankState.CurrentOpenRow = null;
                 } else {
-                    for (let i = 0; i < this.addrCfg.Banks; i++) {
+                    for (let i = 0; i < this.AddrCfg.Banks; i++) {
                         if (this.BankState[i].State === BankStateEnum.Active && !this.BankState[i].WriteTxs) {
                             this.BankState[i].State = BankStateEnum.Precharging;
                             this.BankState[i].StateCycles = 1 - commandCycles;
@@ -463,7 +465,7 @@ class MemoryController {
             this.fawTracking.shift();
         }
 
-        for (let i = 0; i < this.addrCfg.Banks; i++) {
+        for (let i = 0; i < this.AddrCfg.Banks; i++) {
             const bankState = this.BankState[i];
             const bankHistory = this.BankHistory[i];
 
@@ -506,7 +508,7 @@ class MemoryController {
         if (this.sinceRefresh < 4 * this.tREFI) {
             if (this.imcCommandQueue.length) {
                 const imcCommand = this.imcCommandQueue.shift();
-                const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.addrCfg);
+                const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg);
                 const bankNum = MemoryController.BankNum(group, bank);
                 const bankQueue = this.BankCmdQueue[bankNum];
 
@@ -525,7 +527,7 @@ class MemoryController {
             this.maybeEnqueueRefresh();
         }
 
-        for (let i = 0; i < this.addrCfg.Banks; i++) {
+        for (let i = 0; i < this.AddrCfg.Banks; i++) {
             const bankQueue = this.BankCmdQueue[i];
             const bankState = this.BankState[i];
             const bankHistory = this.BankHistory[i];
@@ -535,7 +537,7 @@ class MemoryController {
             bankQueue.StartIssueCheck();
             bankQueue.IssueCheck(this.currentCommand === null, "C/A bus available");
             if (this.gearDown) {
-                bankQueue.IssueCheck((this.tCR & 1) == (this.currentCycle & 1), "Gear-Down Latching Cycle");
+                bankQueue.IssueCheck((this.tCR & 1) == (this.currentCycle & 1), "Gear-Down Command Cycle");
             }
 
             if (!bankQueue.Empty) {
@@ -616,8 +618,8 @@ class MemoryController {
         }
 
         if (!allBankCommand) {
-            for (let i = 0; i < this.addrCfg.Banks; i++) {
-                const bankNum = ((i + (this.currentCycle >> this.addrCfg.BA)) & ((1 << this.addrCfg.BG) - 1)) << this.addrCfg.BA;
+            for (let i = 0; i < this.AddrCfg.Banks; i++) {
+                const bankNum = ((i + (this.currentCycle >> this.AddrCfg.BA)) & ((1 << this.AddrCfg.BG) - 1)) << this.AddrCfg.BA;
                 const bankHistory = this.BankHistory[bankNum];
                 const bankQueue = this.BankCmdQueue[bankNum];
                 if (!bankQueue.CanIssue) continue;
@@ -676,15 +678,15 @@ class MemoryController {
 
     public static MapAddress(addr: number, addrCfg: AddressMapConfig) : [number, number, number, number] {
         let bgBits = addrCfg.BG;
-        addr >>>= 3;
+        addr >>>= addrCfg.BL;
         let group = 0;
         if (bgBits) {
             group = addr & 1;
             bgBits--;
             addr >>>= 1;
         }
-        const column = (addr & ((1 << (addrCfg.CA - 3)) - 1)) << 3;
-        addr >>>= addrCfg.CA - 3;
+        const column = (addr & ((1 << (addrCfg.CA - addrCfg.BL)) - 1)) << addrCfg.BL;
+        addr >>>= addrCfg.CA - addrCfg.BL;
         if (bgBits) {
             group |= (addr & 1) << 1;
             bgBits--;
@@ -703,24 +705,24 @@ class MemoryController {
 
     public MapMemArray(mem: [number, number, number, number]) : number {
         let addr = mem[2];
-        if (this.addrCfg.BG > 2) {
-            addr <<= this.addrCfg.BG - 2;
+        if (this.AddrCfg.BG > 2) {
+            addr <<= this.AddrCfg.BG - 2;
             addr |= mem[0] >>> 2;
         }
-        addr <<= this.addrCfg.BA;
+        addr <<= this.AddrCfg.BA;
         addr |= mem[1];
-        if (this.addrCfg.BG > 1) {
+        if (this.AddrCfg.BG > 1) {
             addr <<= 1;
             addr |= (mem[0] >>> 1) & 1;
         }
-        addr <<= this.addrCfg.CA - 3;
-        addr |= mem[3] >>> 3;
-        if (this.addrCfg.BG > 0) {
+        addr <<= this.AddrCfg.CA - this.AddrCfg.BL;
+        addr |= mem[3] >>> this.AddrCfg.BL;
+        if (this.AddrCfg.BG > 0) {
             addr <<= 1;
             addr |= mem[0] & 1;
         }
 
-        addr <<= 3;
+        addr <<= this.AddrCfg.BL;
         return addr;
     }
 
@@ -742,6 +744,7 @@ function getAddrMapConfig() {
         parseInt((<HTMLInputElement>$x('bgBits')).value),
         parseInt((<HTMLInputElement>$x('baBits')).value),
         parseInt((<HTMLInputElement>$x('caBits')).value),
+        parseInt((<HTMLInputElement>$x('blBits')).value),
     );
 }
 
@@ -779,6 +782,7 @@ function addCmdRow() {
         mapAddrCell.innerText = `${bankGroup}/${bank}/${toHex(aRow, 5)}/${toHex(col, 3)}`;
 
         if (!row.isConnected) {
+            $x('blBits').removeEventListener('change', updateMapAddr);
             $x('bgBits').removeEventListener('change', updateMapAddr);
             $x('baBits').removeEventListener('change', updateMapAddr);
             $x('caBits').removeEventListener('change', updateMapAddr);
@@ -786,6 +790,7 @@ function addCmdRow() {
     }
 
     addrInput.onkeyup = updateMapAddr;
+    $x('blBits').addEventListener('change', updateMapAddr);
     $x('bgBits').addEventListener('change', updateMapAddr);
     $x('baBits').addEventListener('change', updateMapAddr);
     $x('caBits').addEventListener('change', updateMapAddr);
@@ -852,6 +857,9 @@ const allParams = [
     'ddr5',
     'gearDown',
     'bgBits',
+    'baBits',
+    'caBits',
+    'blBits',
     'cycles',
     'allCycles',
     'useAP'];
@@ -1249,61 +1257,59 @@ function renderStateDumpBankGroup(bg: number) {
     title.innerText = `Bank Group ${bg}`;
     container.appendChild(title);
 
-    bg <<= 2;
-    const [table, tbody] = createTableWithHead('', 'Bank 0', 'Bank 1', 'Bank 2', 'Bank 3');
     const mc = getOrCreateController();
+    const bas = 1 << mc.AddrCfg.BA;
+    bg <<= mc.AddrCfg.BA;
+    const headers = [''];
+    for(let i = 0; i < bas; i++) {
+        headers.push(`Bank ${i}`);
+    }
+
+    function gatherData(sel: (mc: MemoryController, bn: number) => string | HTMLElement | {toString(): string}) {
+        const r = [];
+        for (let i = 0; i < bas; i++) {
+            r.push(sel(mc, bg + i));
+        }
+
+        return r;
+    }
+
+    const [table, tbody] = createTableWithHead(...headers);
     tbody.appendChild(createTableRow(
-        'State', renderState(mc.BankState[bg].State), renderState(mc.BankState[bg + 1].State),
-        renderState(mc.BankState[bg + 2].State), renderState(mc.BankState[bg + 3].State),
+        'State', ...gatherData((mc, bg) => renderState(mc.BankState[bg].State)),
     ));
     tbody.appendChild(createTableRow(
-        'Cycles', mc.BankState[bg].StateCycles, mc.BankState[bg + 1].StateCycles,
-        mc.BankState[bg + 2].StateCycles, mc.BankState[bg + 3].StateCycles,
+        'Cycles', ...gatherData((mc, bg) => mc.BankState[bg].StateCycles),
+        ));
+    tbody.appendChild(createTableRow(
+        'Open Row', ...gatherData((mc, bg) => toHex(mc.BankState[bg].CurrentOpenRow, 5)),
     ));
     tbody.appendChild(createTableRow(
-        'Open Row',
-        toHex(mc.BankState[bg].CurrentOpenRow, 5), toHex(mc.BankState[bg + 1].CurrentOpenRow, 5),
-        toHex(mc.BankState[bg + 2].CurrentOpenRow, 5), toHex(mc.BankState[bg + 3].CurrentOpenRow, 5),
+        'AP Engaged', ...gatherData((mc, bg) => mc.BankState[bg].WillPrecharge),
     ));
     tbody.appendChild(createTableRow(
-        'AP Engaged', mc.BankState[bg].WillPrecharge, mc.BankState[bg + 1].WillPrecharge,
-        mc.BankState[bg + 2].WillPrecharge, mc.BankState[bg + 3].WillPrecharge,
+        'Active WRITEs', ...gatherData((mc, bg) => mc.BankState[bg].WriteTxs),
     ));
     tbody.appendChild(createTableRow(
-        'Active WRITEs', mc.BankState[bg].WriteTxs, mc.BankState[bg + 1].WriteTxs,
-        mc.BankState[bg + 2].WriteTxs, mc.BankState[bg + 3].WriteTxs,
+        'Last ACT', ...gatherData((mc, bg) => mc.BankHistory[bg].SinceActivate),
     ));
     tbody.appendChild(createTableRow(
-        'Last ACT', mc.BankHistory[bg].SinceActivate, mc.BankHistory[bg + 1].SinceActivate,
-        mc.BankHistory[bg + 2].SinceActivate, mc.BankHistory[bg + 3].SinceActivate,
+        'Last READ', ...gatherData((mc, bg) => mc.BankHistory[bg].SinceRead),
     ));
     tbody.appendChild(createTableRow(
-        'Last READ', mc.BankHistory[bg].SinceRead, mc.BankHistory[bg + 1].SinceRead,
-        mc.BankHistory[bg + 2].SinceRead, mc.BankHistory[bg + 3].SinceRead,
+        'Last WRITE', ...gatherData((mc, bg) => mc.BankHistory[bg].SinceWrite),
     ));
     tbody.appendChild(createTableRow(
-        'Last WRITE', mc.BankHistory[bg].SinceWrite, mc.BankHistory[bg + 1].SinceWrite,
-        mc.BankHistory[bg + 2].SinceWrite, mc.BankHistory[bg + 3].SinceWrite,
+        'Last WRITE Tx', ...gatherData((mc, bg) => mc.BankHistory[bg].SinceWriteData),
     ));
     tbody.appendChild(createTableRow(
-        'Last WRITE Tx', mc.BankHistory[bg].SinceWriteData, mc.BankHistory[bg + 1].SinceWriteData,
-        mc.BankHistory[bg + 2].SinceWriteData, mc.BankHistory[bg + 3].SinceWriteData,
+        'Next Command', ...gatherData((mc, bg) => mc.BankCmdQueue[bg].CheckCmd),
     ));
     tbody.appendChild(createTableRow(
-        'Next Command', mc.BankCmdQueue[bg].CheckCmd?.toString(), mc.BankCmdQueue[bg + 1].CheckCmd?.toString(),
-        mc.BankCmdQueue[bg + 2].CheckCmd?.toString(), mc.BankCmdQueue[bg + 3].CheckCmd?.toString(),
+        'Issue Check', ...gatherData((mc, bg) => renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks)),
     ));
     tbody.appendChild(createTableRow(
-        'Issue Check', renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks),
-        renderIssueCheck(mc.BankCmdQueue[bg + 1].CheckCmd && mc.BankCmdQueue[bg + 1].IssueChecks),
-        renderIssueCheck(mc.BankCmdQueue[bg + 2].CheckCmd && mc.BankCmdQueue[bg + 2].IssueChecks),
-        renderIssueCheck(mc.BankCmdQueue[bg + 3].CheckCmd && mc.BankCmdQueue[bg + 3].IssueChecks),
-    ));
-    tbody.appendChild(createTableRow(
-        'Command Queue', renderCommandQueue(mc.BankCmdQueue[bg].AllCommand),
-        renderCommandQueue(mc.BankCmdQueue[bg + 1].AllCommand),
-        renderCommandQueue(mc.BankCmdQueue[bg + 2].AllCommand),
-        renderCommandQueue(mc.BankCmdQueue[bg + 3].AllCommand),
+        'Command Queue', ...gatherData((mc, bg) => renderCommandQueue(mc.BankCmdQueue[bg].AllCommand))
     ));
 
     container.appendChild(table);
@@ -1357,7 +1363,8 @@ function renderStateDump() {
     while (dumpRoot.hasChildNodes())
         dumpRoot.removeChild(dumpRoot.childNodes[0]);
 
-    const bgs = 1 << parseInt((<HTMLInputElement>$x('bgBits')).value);
+    const mc = getOrCreateController();
+    const bgs = 1 << mc.AddrCfg.BG;
     for (let i = 0; i < bgs; i++) {
         dumpRoot.appendChild(renderStateDumpBankGroup(i));
     }
