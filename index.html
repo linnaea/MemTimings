@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <title>I'm a bad DDR SDRAM controller</title>
     <style>
-        html {
-            font-family: monospace;
-            font-size: larger;
+        html, body {
+            height: 100%;
+            width: 100%;
+            padding: 0.25em;
+            margin: 0;
+            box-sizing: border-box;
         }
         input[type=number] {
             width: 4.5em;
@@ -55,14 +58,26 @@
             color: darkred;
         }
 
+        .contentBox {
+            margin-top: 0.75em;
+            height: calc(33% - 2.5em);
+            width: max-content;
+            overflow-y: auto;
+            padding: 0.25em;
+            box-sizing: content-box;
+        }
+
         #cycleTable tr > td {
             text-align: center;
         }
-        #cycleTable .actCol, #cycleTable .a17Col {
-            border: 0;
-            padding: 0;
-            max-width: 0;
-            overflow: hidden;
+
+        #stateDump {
+            font-size: smaller;
+        }
+
+        #cmdTable, #cycleTable {
+            font-family: monospace;
+            font-size: larger;
         }
 
         #timings {
@@ -96,307 +111,313 @@
         #timings input.collapse:checked ~ table tr > :nth-child(3) {
             display: none;
         }
-
-        @media (min-width: 900px) {
-            #cycleTable .actCol, #cycleTable .a17Col {
-                border: 1px black solid;
-                padding: 1px;
-                max-width: unset;
-            }
-        }
     </style>
 </head>
 <body>
-<div>
-    <div id="timings">
-        <input type="checkbox" class="collapse" checked />
-        <table>
-            <tr>
-                <th>Timing</th>
-                <th>Value</th>
-                <th>Remarks</th>
-            </tr>
-            <tr>
-                <td>tCAS/tCL/tAA</td>
-                <td><input type="number" id="tCL" value="18" /></td>
-                <td>
-                    Column-Access-Strobe (Read) Latency<br>
-                    A READ command takes this many cycles to process.<br>
-                    When Gear-Down is enabled this must be even.
-                </td>
-            </tr>
-            <tr>
-                <td>tCWL/tCWD</td>
-                <td><input type="number" id="tCWL" value="17" /></td>
-                <td>
-                    Column-Access-Strobe (Write) Latency<br>
-                    The RAM needs this many cycles to get ready to accept data after a WRITE command is issued.
-                </td>
-            </tr>
-            <tr>
-                <td>tRCD</td>
-                <td><input type="number" id="tRCD" value="22" /></td>
-                <td>
-                    RAS-to-CAS Delay<br>
-                    ACTIVATE-to-READ/WRITE command period<br>
-                    An ACTIVATE command takes this many cycles to process.<br>
-                    On AMD platform it's split into tRCDrd and tRCDwr.
-                </td>
-            </tr>
-            <tr>
-                <td>tRP</td>
-                <td><input type="number" id="tRP" value="22" /></td>
-                <td>
-                    Row Precharge Time<br>
-                    PRECHARGE-to-ACTIVATE/REFRESH command period<br>
-                    An PRECHARGE command takes this many cycles to process.
-                </td>
-            </tr>
-            <tr>
-                <td>tRAS</td>
-                <td><input type="number" id="tRAS" value="42" /></td>
-                <td>
-                    Row Active Sustained Time<br>
-                    ACTIVATE-to-PRECHARGE command period<br>
-                    A row must stay active for at least this many cycles.
-                </td>
-            </tr>
-            <tr>
-                <td>tRC</td>
-                <td><input type="number" id="tRC" value="68" /></td>
-                <td>
-                    Row Cycling Time<br>
-                    ACTIVATE-to-ACTIVATE/REFRESH command period<br>
-                    The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
-                    Implicitly set to tRP+tRAS on Intel.
-                </td>
-            </tr>
-            <tr>
-                <td>tRRD_S</td>
-                <td><input type="number" id="tRRDs" value="7" /></td>
-                <td>
-                    RAS to RAS Delay (Short)<br>
-                    ACTIVATE-to-ACTIVATE command period to different bank group.<br>
-                    Wait this many cycles before activating another row in a different bank group.
-                </td>
-            </tr>
-            <tr>
-                <td>tRRD_L</td>
-                <td><input type="number" id="tRRDl" value="10" /></td>
-                <td>
-                    RAS to RAS Delay (Long)<br>
-                    ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
-                    Wait this many cycles before activating another row in the same bank group.
-                </td>
-            </tr>
-            <tr>
-                <td>tFAW</td>
-                <td><input type="number" id="tFAW" value="16" /></td>
-                <td>
-                    Four Activate Window Time<br>
-                    At most 4 ACTIVATE commands can be sent to RAM in this many cycles.
-                </td>
-            </tr>
-            <tr>
-                <td>tWTR_S</td>
-                <td><input type="number" id="tWTRs" value="5" /></td>
-                <td>
-                    Write To Read Time (Short)<br>
-                    Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                    to issuing a READ command to a different bank group.
-                </td>
-            </tr>
-            <tr>
-                <td>tWTR_L</td>
-                <td><input type="number" id="tWTRl" value="14" /></td>
-                <td>
-                    Write To Read Time (Long)<br>
-                    Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                    to issuing a READ command to a different bank in the same bank group.
-                </td>
-            </tr>
-            <tr>
-                <td>tWR</td>
-                <td><input type="number" id="tWR" value="12" /></td>
-                <td>
-                    Write Recovery Time<br>
-                    Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                    to when a PRECHARGE command can be issued.<br>
-                    It takes this many cycles for data to be moved into the core of RAM.<br>
-                    When Gear-Down is enabled this must be even.
-                </td>
-            </tr>
-            <tr>
-                <td>tRTP</td>
-                <td><input type="number" id="tRTP" value="12" /></td>
-                <td>
-                    Read To Precharge Time<br>
-                    READ-to-PRECHARGE command period<br>
-                    It takes this many cycles for data to be moved back into the core of RAM.<br>
-                    When Gear-Down is enabled this must be even.
-                </td>
-            </tr>
-            <tr>
-                <td>tCCD_L</td>
-                <td><input type="number" id="tCCDl" value="5" /></td>
-                <td>
-                    CAS-to-CAS Delay Long<br>
-                    READ/WRITE-to-READ/WRITE command period to different bank in same bank group.<br>
-                    Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
-                    On Intel platforms it's split into RdRd/WrWr/RdWr/WrRd_sg.<br>
-                    On AMD platforms it's split into RdRdScL/WrWrScL and probably RdWr.
-                </td>
-            </tr>
-            <tr>
-                <td>tCCD_S</td>
-                <td><input type="number" id="tCCDs" value="4" /></td>
-                <td>
-                    CAS-to-CAS Delay Short<br>
-                    READ/WRITE-to-READ/WRITE command period to different bank group.<br>
-                    Wait this many cycles before reading from/writing to another bank group.<br>
-                    On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_dg.<br>
-                    On AMD platforms it's split into RdRdSc/WrWrSc and probably WrRd.
-                </td>
-            </tr>
-            <tr>
-                <td>tREFI</td>
-                <td><input type="number" id="tREFI" value="14062" /></td>
-                <td>
-                    REFresh Interval Time<br>
-                    Average cycles between REFRESH commands.<br>
-                    In 2x mode this is cut in half, in 4x mode it's a quarter.<br>
-                    And when the memory stick is running hot (like 85C hot) it also gets cut in half.
-                </td>
-            </tr>
-            <tr>
-                <td>tRFC</td>
-                <td><input type="number" id="tRFC" value="642" /></td>
-                <td>
-                    ReFresh Cycle Time<br>
-                    A REFRESH command takes this many cycles to process in normal (1x) refresh mode.<br>
-                    Spec requires 8 REFRESH commands in 8x tREFI.
-                </td>
-            </tr>
-            <tr>
-                <td>tRFC2</td>
-                <td>-</td>
-                <td>
-                    ReFresh Cycle Time (in 2x Refresh Mode)<br>
-                    A REFRESH command takes this many cycles to process in 2x refresh mode.<br>
-                    2x and 4x mode refreshes fewer rows per command and needs to issue REFRESH more frequently.<br>
-                    This one is probably called "2x refresh" or "Fine Granularity Refresh" in BIOS.<br>
-                    Enabling this mode does not make RAM operable at higher temperatures.<br>
-                    Extended temperature operation uses half tREFI with the normal tRFC, not tRFC2.
-                </td>
-            </tr>
-            <tr>
-                <td>tRFC4</td>
-                <td>-</td>
-                <td>
-                    ReFresh Cycle Time (in 4x Refresh Mode)<br>
-                    A REFRESH command takes this many cycles to process in 4x refresh mode.<br>
-                    Might be unused, seems to have been deleted in DDR5.
-                </td>
-            </tr>
-            <tr>
-                <td>tCKE</td>
-                <td>-</td>
-                <td>
-                    ClocK Enable Time<br>
-                    Minimum CKE signal pulse width<br>
-                    CKE is used to put RAM into power save mode, if not using power save it's of no use.
-                </td>
-            </tr>
-            <tr>
-                <td colspan="3" style="text-align: center !important;"><b>I hate myself</b></td>
-            </tr>
-            <tr>
-                <td>tCR</td>
-                <td><input type="number" id="tCR" value="1" /></td>
-                <td>
-                    Command Rate<br>
-                    Hold Command/Address signals for this many cycles.<br>
-                    C/A is latched into memory at the end of signaling.
-                </td>
-            </tr>
-            <tr>
-                <td>BG Bits</td>
-                <td><input id="bgBits" type="number" value="2" /></td>
-                <td>
-                    Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
-                </td>
-            </tr>
-            <tr>
-                <td>DDR5</td>
-                <td><input id="ddr5" type="checkbox" /></td>
-                <td>
-                    Try to emulate DDR5 (2 cycle ACT/READ/WRITE).<br>
-                    Command scheduling will be extra bad.
-                </td>
-            </tr>
-            <tr>
-                <td>Gear-Down</td>
-                <td><input id="gearDown" type="checkbox" /></td>
-                <td>
-                    Gear-Down Mode (DDR4)<br>
-                    Latch Command/Address every other cycle only.<br>
-                    tCL/tWR/tRTP must be even when enabled.
-                </td>
-            </tr>
-        </table>
-    </div>
-    <div>
-        <input id="allCycles" type="checkbox" />Show NO-OP cycles
-        <input id="useAP" type="checkbox" />Use Auto-Precharge
-        <br>
-        <button id="go">Run</button> <input id="cycles" type="number" value="2000" max="999999" /> Cycles
-        <button id="step">Single Step</button>
-        <button id="reset">Reset</button>
-        <div>&nbsp;</div>
-
-        <table id="cmdTable">
-            <thead>
-            <tr>
-                <th>Cycle</th>
-                <th>R/W</th>
-                <th>Address (Hex)</th>
-                <th>Group/Bank/Row/Col</th>
-                <th>+/-</th>
-            </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
-
-        <div>&nbsp;</div>
-        <table id="cycleTable">
-            <thead>
-            <tr>
-                <th>Cycle</th>
-                <th>Command</th>
-                <th>BG/BA</th>
-                <th class="actCol" style="text-decoration: overline">ACT</th>
-                <th class="a17Col">A17</th>
-                <th>A16<br><span style="text-decoration: overline">RAS</span></th>
-                <th>A15<br><span style="text-decoration: overline">CAS</span></th>
-                <th>A14<br><span style="text-decoration: overline">WE</span></th>
-                <th>A13-A11</th>
-                <th>A10<br>AP</th>
-                <th>A9-A0</th>
-                <th>DQS</th>
-                <th>DQ</th>
-            </tr>
-            </thead>
-            <tbody>
-
-            </tbody>
-        </table>
-
-        <div id="stateDump">
-        </div>
-    </div>
+<div id="timings">
+    <input type="checkbox" class="collapse" checked />
+    <table>
+        <tr>
+            <th>Timing</th>
+            <th>Value</th>
+            <th>Remarks</th>
+        </tr>
+        <tr>
+            <td>tCAS/tCL/tAA</td>
+            <td><input type="number" id="tCL" value="18" /></td>
+            <td>
+                Column-Access-Strobe (Read) Latency<br>
+                A READ command takes this many cycles to process.<br>
+                When Gear-Down is enabled this must be even.
+            </td>
+        </tr>
+        <tr>
+            <td>tCWL/tCWD</td>
+            <td><input type="number" id="tCWL" value="17" /></td>
+            <td>
+                Column-Access-Strobe (Write) Latency<br>
+                The RAM needs this many cycles to get ready to accept data after a WRITE command is issued.
+            </td>
+        </tr>
+        <tr>
+            <td>tRCD</td>
+            <td><input type="number" id="tRCD" value="22" /></td>
+            <td>
+                RAS-to-CAS Delay<br>
+                ACTIVATE-to-READ/WRITE command period<br>
+                An ACTIVATE command takes this many cycles to process.<br>
+                On AMD platform it's split into tRCDrd and tRCDwr.
+            </td>
+        </tr>
+        <tr>
+            <td>tRP</td>
+            <td><input type="number" id="tRP" value="22" /></td>
+            <td>
+                Row Precharge Time<br>
+                PRECHARGE-to-ACTIVATE/REFRESH command period<br>
+                An PRECHARGE command takes this many cycles to process.
+            </td>
+        </tr>
+        <tr>
+            <td>tRAS</td>
+            <td><input type="number" id="tRAS" value="42" /></td>
+            <td>
+                Row Active Sustained Time<br>
+                ACTIVATE-to-PRECHARGE command period<br>
+                A row must stay active for at least this many cycles.
+            </td>
+        </tr>
+        <tr>
+            <td>tRC</td>
+            <td><input type="number" id="tRC" value="68" /></td>
+            <td>
+                Row Cycling Time<br>
+                ACTIVATE-to-ACTIVATE/REFRESH command period<br>
+                The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
+                Implicitly set to tRP+tRAS on Intel.
+            </td>
+        </tr>
+        <tr>
+            <td>tRRD_S</td>
+            <td><input type="number" id="tRRDs" value="7" /></td>
+            <td>
+                RAS to RAS Delay (Short)<br>
+                ACTIVATE-to-ACTIVATE command period to different bank group.<br>
+                Wait this many cycles before activating another row in a different bank group.
+            </td>
+        </tr>
+        <tr>
+            <td>tRRD_L</td>
+            <td><input type="number" id="tRRDl" value="10" /></td>
+            <td>
+                RAS to RAS Delay (Long)<br>
+                ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
+                Wait this many cycles before activating another row in the same bank group.
+            </td>
+        </tr>
+        <tr>
+            <td>tFAW</td>
+            <td><input type="number" id="tFAW" value="16" /></td>
+            <td>
+                Four Activate Window Time<br>
+                At most 4 ACTIVATE commands can be sent to RAM in this many cycles.
+            </td>
+        </tr>
+        <tr>
+            <td>tWTR_S</td>
+            <td><input type="number" id="tWTRs" value="5" /></td>
+            <td>
+                Write To Read Time (Short)<br>
+                Delay from an WRITE operation is started on RAM(after data is sent)<br>
+                to issuing a READ command to a different bank group.
+            </td>
+        </tr>
+        <tr>
+            <td>tWTR_L</td>
+            <td><input type="number" id="tWTRl" value="14" /></td>
+            <td>
+                Write To Read Time (Long)<br>
+                Delay from an WRITE operation is started on RAM(after data is sent)<br>
+                to issuing a READ command to a different bank in the same bank group.
+            </td>
+        </tr>
+        <tr>
+            <td>tWR</td>
+            <td><input type="number" id="tWR" value="12" /></td>
+            <td>
+                Write Recovery Time<br>
+                Delay from an WRITE operation is started on RAM(after data is sent)<br>
+                to when a PRECHARGE command can be issued.<br>
+                It takes this many cycles for data to be moved into the core of RAM.<br>
+                When Gear-Down is enabled this must be even.
+            </td>
+        </tr>
+        <tr>
+            <td>tRTP</td>
+            <td><input type="number" id="tRTP" value="12" /></td>
+            <td>
+                Read To Precharge Time<br>
+                READ-to-PRECHARGE command period<br>
+                It takes this many cycles for data to be moved back into the core of RAM.<br>
+                When Gear-Down is enabled this must be even.
+            </td>
+        </tr>
+        <tr>
+            <td>tCCD_L</td>
+            <td><input type="number" id="tCCDl" value="5" /></td>
+            <td>
+                CAS-to-CAS Delay Long<br>
+                READ/WRITE-to-READ/WRITE command period to different bank in same bank group.<br>
+                Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
+                On Intel platforms it's split into RdRd/WrWr/RdWr/WrRd_sg.<br>
+                On AMD platforms it's split into RdRdScL/WrWrScL and probably RdWr.
+            </td>
+        </tr>
+        <tr>
+            <td>tCCD_S</td>
+            <td><input type="number" id="tCCDs" value="4" /></td>
+            <td>
+                CAS-to-CAS Delay Short<br>
+                READ/WRITE-to-READ/WRITE command period to different bank group.<br>
+                Wait this many cycles before reading from/writing to another bank group.<br>
+                On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_dg.<br>
+                On AMD platforms it's split into RdRdSc/WrWrSc and probably WrRd.
+            </td>
+        </tr>
+        <tr>
+            <td>tREFI</td>
+            <td><input type="number" id="tREFI" value="14062" /></td>
+            <td>
+                REFresh Interval Time<br>
+                Average cycles between REFRESH commands.<br>
+                In 2x mode this is cut in half, in 4x mode it's a quarter.<br>
+                And when the memory stick is running hot (like 85C hot) it also gets cut in half.
+            </td>
+        </tr>
+        <tr>
+            <td>tRFC</td>
+            <td><input type="number" id="tRFC" value="642" /></td>
+            <td>
+                ReFresh Cycle Time<br>
+                A REFRESH command takes this many cycles to process in normal (1x) refresh mode.<br>
+                Spec requires 8 REFRESH commands in 8x tREFI.
+            </td>
+        </tr>
+        <tr>
+            <td>tRFC2</td>
+            <td>-</td>
+            <td>
+                ReFresh Cycle Time (in 2x Refresh Mode)<br>
+                A REFRESH command takes this many cycles to process in 2x refresh mode.<br>
+                2x and 4x mode refreshes fewer rows per command and needs to issue REFRESH more frequently.<br>
+                This one is probably called "2x refresh" or "Fine Granularity Refresh" in BIOS.<br>
+                Enabling this mode does not make RAM operable at higher temperatures.<br>
+                Extended temperature operation uses half tREFI with the normal tRFC, not tRFC2.
+            </td>
+        </tr>
+        <tr>
+            <td>tRFC4</td>
+            <td>-</td>
+            <td>
+                ReFresh Cycle Time (in 4x Refresh Mode)<br>
+                A REFRESH command takes this many cycles to process in 4x refresh mode.<br>
+                Might be unused, seems to have been deleted in DDR5.
+            </td>
+        </tr>
+        <tr>
+            <td>tCKE</td>
+            <td>-</td>
+            <td>
+                ClocK Enable Time<br>
+                Minimum CKE signal pulse width<br>
+                CKE is used to put RAM into power save mode, if not using power save it's of no use.
+            </td>
+        </tr>
+        <tr>
+            <td colspan="3" style="text-align: center !important;"><b>I hate myself</b></td>
+        </tr>
+        <tr>
+            <td>tCR</td>
+            <td><input type="number" id="tCR" value="1" /></td>
+            <td>
+                Command Rate<br>
+                Hold Command/Address signals for this many cycles.<br>
+                C/A is latched into memory at the end of signaling.
+            </td>
+        </tr>
+        <tr>
+            <td>BG Bits</td>
+            <td><input id="bgBits" type="number" value="2" /></td>
+            <td>
+                Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+            </td>
+        </tr>
+        <tr>
+            <td>BA Bits</td>
+            <td><input id="baBits" type="number" value="2" /></td>
+            <td>
+                Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+            </td>
+        </tr>
+        <tr>
+            <td>CA Bits</td>
+            <td><input id="caBits" type="number" value="10" /></td>
+            <td>
+                Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
+            </td>
+        </tr>
+        <tr>
+            <td>DDR5</td>
+            <td><input id="ddr5" type="checkbox" /></td>
+            <td>
+                Try to emulate DDR5 (2 cycle ACT/READ/WRITE).<br>
+                Command scheduling will be extra bad.
+            </td>
+        </tr>
+        <tr>
+            <td>Gear-Down</td>
+            <td><input id="gearDown" type="checkbox" /></td>
+            <td>
+                Gear-Down Mode (DDR4)<br>
+                Latch Command/Address every other cycle only.<br>
+                tCL/tWR/tRTP must be even when enabled.
+            </td>
+        </tr>
+    </table>
 </div>
-<div style="clear: both">&nbsp;</div>
+<div id="controls">
+    <input id="allCycles" type="checkbox" />Show NO-OP cycles
+    <input id="useAP" type="checkbox" />Use Auto-Precharge
+    <br>
+    <button id="go">Run</button> <input id="cycles" type="number" value="2000" max="999999" /> Cycles
+    <button id="step">Single Step</button>
+    <button id="reset">Reset</button>
+    <br>
+    Address maps as RA:BG[:2]:BA:BG1:CA[:3]:BG0:CA[2:0]
+    <br>
+</div>
+
+<div class="contentBox">
+    <table id="cmdTable">
+        <thead>
+        <tr>
+            <th>Cycle</th>
+            <th>R/W</th>
+            <th>Address (Hex)</th>
+            <th>Group/Bank/Row/Col</th>
+            <th>+/-</th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+
+<div class="contentBox">
+    <table id="cycleTable">
+        <thead>
+        <tr>
+            <th>Cycle</th>
+            <th>Command</th>
+            <th>BG/BA</th>
+            <th style="text-decoration: overline">CS</th>
+            <th style="text-decoration: overline">RAS</th>
+            <th style="text-decoration: overline">CAS</th>
+            <th style="text-decoration: overline">WE</th>
+            <th>AP</th>
+            <th>Address</th>
+            <th>DQS</th>
+            <th>DQ</th>
+        </tr>
+        </thead>
+        <tbody>
+
+        </tbody>
+    </table>
+</div>
+
+<div class="contentBox" id="stateDump">
+</div>
 <script src="script.js"></script>
 </body>
 </html>

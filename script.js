@@ -177,8 +177,18 @@ var DqsSchedule = /** @class */ (function () {
     }
     return DqsSchedule;
 }());
+var AddressMapConfig = /** @class */ (function () {
+    function AddressMapConfig(bg, ba, ca) {
+        this.BG = bg;
+        this.BA = ba;
+        this.CA = ca;
+        this.Groups = 1 << bg;
+        this.Banks = this.Groups * (1 << ba);
+    }
+    return AddressMapConfig;
+}());
 var MemoryController = /** @class */ (function () {
-    function MemoryController(tCL, tCWL, tRCD, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tREFI, tRFC, tCR, gdm, bgBits, commandCycleMap) {
+    function MemoryController(tCL, tCWL, tRCD, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
         var _a;
         var _b, _c, _d, _e, _f;
         this.tCL = tCL;
@@ -198,7 +208,7 @@ var MemoryController = /** @class */ (function () {
         this.tCCDs = tCCDs;
         this.tREFI = tREFI;
         this.tRFC = tRFC;
-        this.bgBits = bgBits;
+        this.addrCfg = addrCfg;
         this.tRPRE = 1;
         this.tWPRE = 1;
         this.tCR = tCR;
@@ -219,18 +229,23 @@ var MemoryController = /** @class */ (function () {
         this.dqsSchedule = [];
         this.RankHistory = new CommandHistory();
         this.GroupHistory = [];
-        for (var i = 0; i < MemoryController.GROUPS; i++) {
+        for (var i = 0; i < addrCfg.Groups; i++) {
             this.GroupHistory.push(new CommandHistory());
         }
         this.BankCmdQueue = [];
         this.BankHistory = [];
         this.BankState = [];
-        for (var i = 0; i < MemoryController.BANKS; i++) {
+        for (var i = 0; i < addrCfg.Banks; i++) {
             this.BankCmdQueue.push(new CommandQueue(tCR, this.commandCycleMap));
             this.BankHistory.push(new CommandHistory());
             this.BankState.push(new BankState());
         }
     }
+    Object.defineProperty(MemoryController.prototype, "CommandRate", {
+        get: function () { return this.tCR; },
+        enumerable: false,
+        configurable: true
+    });
     Object.defineProperty(MemoryController.prototype, "CurrentCycle", {
         get: function () { return this.currentCycle; },
         enumerable: false,
@@ -329,7 +344,7 @@ var MemoryController = /** @class */ (function () {
         switch (cmd.Command) {
             case MemCommandEnum.REF:
                 this.sinceRefresh -= this.tREFI;
-                for (var i = 0; i < MemoryController.BANKS; i++) {
+                for (var i = 0; i < this.addrCfg.Banks; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
                     this.BankState[i].StateCycles = 1 - commandCycles;
                 }
@@ -341,7 +356,7 @@ var MemoryController = /** @class */ (function () {
                     bankState.CurrentOpenRow = null;
                 }
                 else {
-                    for (var i = 0; i < MemoryController.BANKS; i++) {
+                    for (var i = 0; i < this.addrCfg.Banks; i++) {
                         if (this.BankState[i].State === BankStateEnum.Active && !this.BankState[i].WriteTxs) {
                             this.BankState[i].State = BankStateEnum.Precharging;
                             this.BankState[i].StateCycles = 1 - commandCycles;
@@ -399,7 +414,7 @@ var MemoryController = /** @class */ (function () {
         if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
             this.fawTracking.shift();
         }
-        for (var i = 0; i < MemoryController.BANKS; i++) {
+        for (var i = 0; i < this.addrCfg.Banks; i++) {
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
             switch (bankState.State) {
@@ -440,7 +455,7 @@ var MemoryController = /** @class */ (function () {
         if (this.sinceRefresh < 4 * this.tREFI) {
             if (this.imcCommandQueue.length) {
                 var imcCommand = this.imcCommandQueue.shift();
-                var _b = MemoryController.MapAddress(imcCommand.Address, this.bgBits), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
+                var _b = MemoryController.MapAddress(imcCommand.Address, this.addrCfg), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
                 var bankNum = MemoryController.BankNum(group, bank);
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (bankQueue.OpenRow !== row) {
@@ -457,7 +472,7 @@ var MemoryController = /** @class */ (function () {
         else {
             this.maybeEnqueueRefresh();
         }
-        for (var i = 0; i < MemoryController.BANKS; i++) {
+        for (var i = 0; i < this.addrCfg.Banks; i++) {
             var bankQueue = this.BankCmdQueue[i];
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
@@ -535,8 +550,8 @@ var MemoryController = /** @class */ (function () {
             }
         }
         if (!allBankCommand) {
-            for (var i = 0; i < MemoryController.BANKS; i++) {
-                var bankNum = (i + (this.currentCycle >> 3)) & ((1 << (2 + this.bgBits)) - 1);
+            for (var i = 0; i < this.addrCfg.Banks; i++) {
+                var bankNum = ((i + (this.currentCycle >> this.addrCfg.BA)) & ((1 << this.addrCfg.BG) - 1)) << this.addrCfg.BA;
                 var bankHistory = this.BankHistory[bankNum];
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (!bankQueue.CanIssue)
@@ -589,31 +604,53 @@ var MemoryController = /** @class */ (function () {
             }
         }
     };
-    MemoryController.MapAddress = function (addr, bgBits) {
+    MemoryController.MapAddress = function (addr, addrCfg) {
+        var bgBits = addrCfg.BG;
         addr >>>= 3;
-        var group = addr & ((1 << bgBits) - 1);
-        addr >>>= bgBits;
-        var column = (addr & 0x7F) << 3;
-        addr >>>= 7;
-        var bank = addr & 3;
-        addr >>>= 2;
+        var group = 0;
+        if (bgBits) {
+            group = addr & 1;
+            bgBits--;
+            addr >>>= 1;
+        }
+        var column = (addr & ((1 << (addrCfg.CA - 3)) - 1)) << 3;
+        addr >>>= addrCfg.CA - 3;
+        if (bgBits) {
+            group |= (addr & 1) << 1;
+            bgBits--;
+            addr >>>= 1;
+        }
+        var bank = addr & ((1 << addrCfg.BA) - 1);
+        addr >>>= addrCfg.BA;
+        if (bgBits) {
+            group |= (addr & ((1 << bgBits) - 1)) << 2;
+            addr >>>= bgBits;
+        }
         var row = addr;
         return [group, bank, row, column];
     };
     MemoryController.prototype.MapMemArray = function (mem) {
         var addr = mem[2];
-        addr <<= 2;
+        if (this.addrCfg.BG > 2) {
+            addr <<= this.addrCfg.BG - 2;
+            addr |= mem[0] >>> 2;
+        }
+        addr <<= this.addrCfg.BA;
         addr |= mem[1];
-        addr <<= 7;
+        if (this.addrCfg.BG > 1) {
+            addr <<= 1;
+            addr |= (mem[0] >>> 1) & 1;
+        }
+        addr <<= this.addrCfg.CA - 3;
         addr |= mem[3] >>> 3;
-        addr <<= this.bgBits;
-        addr |= mem[0];
+        if (this.addrCfg.BG > 0) {
+            addr <<= 1;
+            addr |= mem[0] & 1;
+        }
         addr <<= 3;
         return addr;
     };
     MemoryController.BankNum = function (group, bank) { return (group << 2) | bank; };
-    MemoryController.BANKS = 32;
-    MemoryController.GROUPS = 8;
     return MemoryController;
 }());
 function $x(e) { return document.getElementById(e); }
@@ -626,6 +663,9 @@ function toHex(v, len) {
     while (s.length < len)
         s = '0' + s;
     return s;
+}
+function getAddrMapConfig() {
+    return new AddressMapConfig(parseInt($x('bgBits').value), parseInt($x('baBits').value), parseInt($x('caBits').value));
 }
 function addCmdRow() {
     var row = document.createElement('tr');
@@ -652,14 +692,18 @@ function addCmdRow() {
     row.appendChild(mapAddrCell);
     function updateMapAddr() {
         var addr = parseInt(addrInput.value, 16);
-        var _a = MemoryController.MapAddress(addr, parseInt($x('bgBits').value)), bankGroup = _a[0], bank = _a[1], aRow = _a[2], col = _a[3];
+        var _a = MemoryController.MapAddress(addr, getAddrMapConfig()), bankGroup = _a[0], bank = _a[1], aRow = _a[2], col = _a[3];
         mapAddrCell.innerText = "".concat(bankGroup, "/").concat(bank, "/").concat(toHex(aRow, 5), "/").concat(toHex(col, 3));
         if (!row.isConnected) {
             $x('bgBits').removeEventListener('change', updateMapAddr);
+            $x('baBits').removeEventListener('change', updateMapAddr);
+            $x('caBits').removeEventListener('change', updateMapAddr);
         }
     }
     addrInput.onkeyup = updateMapAddr;
     $x('bgBits').addEventListener('change', updateMapAddr);
+    $x('baBits').addEventListener('change', updateMapAddr);
+    $x('caBits').addEventListener('change', updateMapAddr);
     cell = document.createElement('td');
     var addButton = document.createElement('button');
     addButton.innerHTML = '+';
@@ -769,16 +813,18 @@ function loadState(state) {
     }
 }
 var mc;
+var mcUseDdr5;
 var mcCommands;
 function createController() {
     var commandCycleMap = {};
-    if ($x('ddr5').checked) {
+    mcUseDdr5 = $x('ddr5').checked;
+    if (mcUseDdr5) {
         commandCycleMap[MemCommandEnum.ACT] = 2;
         commandCycleMap[MemCommandEnum.READ] = 2;
         commandCycleMap[MemCommandEnum.WRITE] = 2;
     }
     mcCommands = getImcCommands();
-    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCD').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, parseInt($x('bgBits').value), commandCycleMap);
+    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCD').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
     mc.UseAutoPrecharge = !!$x('useAP').checked;
     return mc;
 }
@@ -832,28 +878,56 @@ function renderCycleRow() {
                 break;
         }
         row.appendChild(cell);
+        // CS
+        cell = document.createElement('td');
+        if (mcUseDdr5) {
+            var cmdCycles = 1;
+            switch (cmd.Command) {
+                case MemCommandEnum.ACT:
+                case MemCommandEnum.READ:
+                case MemCommandEnum.WRITE:
+                    cmdCycles = 2;
+                    break;
+            }
+            if ((mc.CommandRate + cmd.NotLatched) < (cmdCycles * mc.CommandRate)) {
+                cell.className = 'logF';
+                cell.innerText = "H";
+            }
+            else {
+                cell.className = 'logT';
+                cell.innerText = "L";
+            }
+        }
+        else {
+            cell.className = cmd.NotLatched ? 'logF' : 'logT';
+            cell.innerText = cmd.NotLatched ? 'H' : 'L';
+        }
+        row.appendChild(cell);
         switch (cmd.Command) {
             case MemCommandEnum.ACT:
+                // RAS/CAS/WE
                 cell = document.createElement('td');
                 cell.innerText = "L";
-                cell.className = 'logT actCol';
+                cell.className = 'logT';
                 row.appendChild(cell);
+                cell = document.createElement('td');
+                cell.innerText = "H";
+                cell.className = 'logF';
+                row.appendChild(cell);
+                cell = document.createElement('td');
+                cell.innerText = "H";
+                cell.className = 'logF';
+                row.appendChild(cell);
+                // Address
                 cell = document.createElement('td');
                 cell.innerText = "".concat(toHex(cmd.Address, 5));
                 cell.className = cmdClass;
-                cell.colSpan = 7;
+                cell.colSpan = 2;
                 row.appendChild(cell);
                 break;
             case MemCommandEnum.READ:
             case MemCommandEnum.WRITE:
-                cell = document.createElement('td');
-                cell.innerText = "H";
-                cell.className = 'logF actCol';
-                row.appendChild(cell);
-                cell = document.createElement('td');
-                cell.innerText = "-";
-                cell.className = cmdClass + ' a17Col';
-                row.appendChild(cell);
+                // RAS/CAS/WE
                 cell = document.createElement('td');
                 cell.innerText = "H";
                 cell.className = 'logF';
@@ -866,28 +940,19 @@ function renderCycleRow() {
                 cell.innerText = (cmd.Command === MemCommandEnum.READ) ? "H" : 'L';
                 cell.className = (cmd.Command === MemCommandEnum.READ) ? "logF" : 'logT';
                 row.appendChild(cell);
-                cell = document.createElement('td');
-                cell.innerText = "-";
-                cell.className = cmdClass;
-                row.appendChild(cell);
+                // AP
                 cell = document.createElement('td');
                 cell.innerText = cmd.AutoPrecharge ? "H" : 'L';
                 cell.className = cmd.AutoPrecharge ? "logT" : 'logF';
                 row.appendChild(cell);
+                // Address
                 cell = document.createElement('td');
                 cell.innerText = "".concat(toHex(cmd.Address, 3));
                 cell.className = cmdClass;
                 row.appendChild(cell);
                 break;
             case MemCommandEnum.PRE:
-                cell = document.createElement('td');
-                cell.innerText = "H";
-                cell.className = 'logF actCol';
-                row.appendChild(cell);
-                cell = document.createElement('td');
-                cell.innerText = "-";
-                cell.className = cmdClass + ' a17Col';
-                row.appendChild(cell);
+                // RAS/CAS/WE
                 cell = document.createElement('td');
                 cell.innerText = "L";
                 cell.className = 'logT';
@@ -897,54 +962,46 @@ function renderCycleRow() {
                 cell.className = 'logF';
                 row.appendChild(cell);
                 cell = document.createElement('td');
-                cell.innerText = 'L';
+                cell.innerText = "L";
                 cell.className = 'logT';
                 row.appendChild(cell);
-                cell = document.createElement('td');
-                cell.innerText = "-";
-                cell.className = cmdClass;
-                row.appendChild(cell);
+                // AP
                 cell = document.createElement('td');
                 cell.innerText = cmd.AutoPrecharge ? "H" : 'L';
                 cell.className = cmd.AutoPrecharge ? "logT" : 'logF';
                 row.appendChild(cell);
+                // Address
                 cell = document.createElement('td');
                 cell.innerText = "-";
                 cell.className = cmdClass;
                 row.appendChild(cell);
                 break;
             case MemCommandEnum.REF:
+                // RAS/CAS/WE
                 cell = document.createElement('td');
-                cell.innerText = "H";
-                cell.className = 'logF actCol';
-                row.appendChild(cell);
-                cell = document.createElement('td');
-                cell.innerText = "-";
-                cell.className = cmdClass + ' a17Col';
+                cell.innerText = "L";
+                cell.className = 'logT';
                 row.appendChild(cell);
                 cell = document.createElement('td');
                 cell.innerText = "L";
                 cell.className = 'logT';
                 row.appendChild(cell);
                 cell = document.createElement('td');
-                cell.innerText = 'L';
-                cell.className = 'logT';
-                row.appendChild(cell);
-                cell = document.createElement('td');
                 cell.innerText = "H";
                 cell.className = 'logF';
                 row.appendChild(cell);
+                // Address
                 cell = document.createElement('td');
                 cell.innerText = "-";
                 cell.className = cmdClass;
-                cell.colSpan = 3;
+                cell.colSpan = 2;
                 row.appendChild(cell);
                 break;
         }
     }
     else {
         cell = document.createElement('td');
-        cell.colSpan = 10;
+        cell.colSpan = 8;
         cell.className = 'inactive';
         row.appendChild(cell);
     }
@@ -1053,6 +1110,11 @@ function renderCommandQueue(cmds) {
     var container = document.createElement('div');
     for (var i = 0; i < cmds.length; i++) {
         var cmd = document.createElement('div');
+        if (i === 9 && cmds.length > 10) {
+            cmd.innerText = "... (+".concat(cmds.length - i, ")");
+            container.appendChild(cmd);
+            break;
+        }
         cmd.innerText = cmds[i].toString();
         container.appendChild(cmd);
     }
@@ -1142,6 +1204,10 @@ function doCycles(cycles) {
         outputDesCycle = !!(mc.CurrentCommand || mc.DqsActive);
     }
     renderStateDump();
+    var cycleTableContainer = tableBody.parentElement;
+    while (!cycleTableContainer.className)
+        cycleTableContainer = cycleTableContainer.parentElement;
+    cycleTableContainer.scrollTo({ top: cycleTableContainer.scrollHeight });
 }
 $x('go').onclick = function () {
     doCycles(parseInt($x('cycles').value));
