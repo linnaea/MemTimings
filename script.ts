@@ -14,21 +14,17 @@ interface ImcCommand {
 
 class MemCommand {
     public Command: MemCommandEnum;
+    public Bank: number;
+    public Group: number;
     public BankNum: number;
     public Address: number;
     public AutoPrecharge: boolean;
     public NotLatched: number;
 
-    get BankGroup(): number {
-        return this.BankNum >> 2;
-    }
-
-    get Bank(): number {
-        return this.BankNum & 3;
-    }
-
-    public constructor(cmd: MemCommandEnum, bank: number, addr: number) {
+    public constructor(cmd: MemCommandEnum, bg: number, ba: number, bank: number, addr: number) {
         this.Command = cmd;
+        this.Bank = ba;
+        this.Group = bg;
         this.BankNum = bank;
         this.Address = addr;
         this.AutoPrecharge = false;
@@ -306,9 +302,9 @@ class MemoryController {
 
     private maybeEnqueueRefresh(): void {
         if (this.BankCmdQueue.every(q => q.Empty) && this.BankState.every(q => q.State !== BankStateEnum.Refreshing)) {
-            const preCommand = new MemCommand(MemCommandEnum.PRE, 0, 0);
+            const preCommand = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
             preCommand.AutoPrecharge = true;
-            const refreshCommand = new MemCommand(MemCommandEnum.REF, 0, 0);
+            const refreshCommand = new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0);
 
             if (!this.BankCmdQueue.every(q => q.OpenRow === null)) {
                 this.BankCmdQueue.forEach(q => q.QueueCommand(preCommand));
@@ -338,12 +334,12 @@ class MemoryController {
         let nextNeedsPreGap = false;
         let nextNeedsPreamble = false;
 
-        let totalCycles = 4;
+        let totalCycles = 1 << (this.AddrCfg.BL - 1);
         let preamble = (cmd.Command === MemCommandEnum.READ) ? this.tRPRE : this.tWPRE;
         let nextPreamble = (nextDqs && (nextDqs.Command.Command === MemCommandEnum.READ)) ? this.tRPRE : this.tWPRE;
 
-        let nextDqsDue = nextDqs ? nextDqs.DueCycles : delay + 4 + 1 + nextPreamble;
-        let prevDqsEnd = prevDqs ? prevDqs.DueCycles + 4 : delay - 1 - preamble;
+        let nextDqsDue = nextDqs ? nextDqs.DueCycles : delay + totalCycles + 1 + nextPreamble;
+        let prevDqsEnd = prevDqs ? prevDqs.DueCycles + totalCycles : delay - 1 - preamble;
 
         needsPreGap ||= prevDqs && prevDqs.Command.Command !== cmd.Command;
         needsPreamble ||= prevDqsEnd !== delay;
@@ -374,19 +370,19 @@ class MemoryController {
     }
 
     private issuePrechargeAllBanks() {
-        const preA = new MemCommand(MemCommandEnum.PRE, 0, 0);
+        const preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
         preA.AutoPrecharge = true;
         this.issueCommand(preA);
     }
 
     private issueRefresh() {
-        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0));
+        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
     }
 
     private issueCommand(cmd: MemCommand) {
         const bankState = this.BankState[cmd.BankNum];
         const bankHistory = this.BankHistory[cmd.BankNum];
-        const groupHistory = this.GroupHistory[cmd.BankGroup];
+        const groupHistory = this.GroupHistory[cmd.Group];
         const commandCycles = this.tCR * this.commandCycleMap[cmd.Command];
 
         cmd.NotLatched = commandCycles - 1;
@@ -509,17 +505,17 @@ class MemoryController {
             if (this.imcCommandQueue.length) {
                 const imcCommand = this.imcCommandQueue.shift();
                 const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg);
-                const bankNum = MemoryController.BankNum(group, bank);
+                const bankNum = (group << this.AddrCfg.BA) | bank;
                 const bankQueue = this.BankCmdQueue[bankNum];
 
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
-                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, bankNum, 0));
+                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0));
 
-                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, bankNum, row));
+                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row));
                 }
 
-                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, bankNum, column));
+                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
             } else if (this.sinceRefresh >= (-4 * this.tREFI)) {
                 this.maybeEnqueueRefresh();
             }
@@ -531,7 +527,7 @@ class MemoryController {
             const bankQueue = this.BankCmdQueue[i];
             const bankState = this.BankState[i];
             const bankHistory = this.BankHistory[i];
-            const groupHistory = this.GroupHistory[i >> 2];
+            const groupHistory = this.GroupHistory[i >> this.AddrCfg.BA];
             let dqsSchedule;
 
             bankQueue.StartIssueCheck();
@@ -652,26 +648,21 @@ class MemoryController {
 
         if (this.dqsSchedule.length) {
             let dqs = this.dqsSchedule[0];
-            switch(dqs.DueCycles) {
-                case -3:
-                    this.dqsSchedule.shift();
-                    if (dqs.Command.Command === MemCommandEnum.WRITE) {
-                        this.BankState[dqs.Command.BankNum].WriteTxs--;
-                        this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
-                        this.GroupHistory[dqs.Command.BankGroup].SinceWriteData = -1;
-                        this.RankHistory.SinceWriteData = -1;
-                    }
-                    /* fallthrough */
-                case -2:
-                case -1:
-                case 0:
-                    this.dqActive = [dqs.Command.Command, dqs.Command.BankGroup, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
-                    this.dqsActive = true;
-                    break;
-                case 1:
-                case 2:
-                    this.dqsActive = dqs.Preamble >= dqs.DueCycles;
-                    break;
+            if (dqs.DueCycles === -((1 << (this.AddrCfg.BL - 1)) - 1)) {
+                this.dqsSchedule.shift();
+                if (dqs.Command.Command === MemCommandEnum.WRITE) {
+                    this.BankState[dqs.Command.BankNum].WriteTxs--;
+                    this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
+                    this.GroupHistory[dqs.Command.Group].SinceWriteData = -1;
+                    this.RankHistory.SinceWriteData = -1;
+                }
+            }
+
+            if (dqs.DueCycles <= 0) {
+                this.dqActive = [dqs.Command.Command, dqs.Command.Group, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
+                this.dqsActive = true;
+            } else {
+                this.dqsActive = dqs.Preamble >= dqs.DueCycles;
             }
         }
     }
@@ -723,10 +714,9 @@ class MemoryController {
         }
 
         addr <<= this.AddrCfg.BL;
+        addr |= mem[3] & ((1 << this.AddrCfg.BL) - 1);
         return addr;
     }
-
-    public static BankNum(group, bank) { return (group << 2) | bank; }
 }
 
 function $x(e) { return document.getElementById(e); }
@@ -990,7 +980,7 @@ function renderCycleRow() {
         // BG/BA
         cell = document.createElement('td');
         cell.className = cmdClass;
-        cell.innerText = `${cmd.BankGroup}/${cmd.Bank}`;
+        cell.innerText = `${cmd.Group}/${cmd.Bank}`;
         switch (cmd.Command) {
             case MemCommandEnum.REF: cell.innerText = "All"; break;
             case MemCommandEnum.PRE: if (cmd.AutoPrecharge) cell.innerText = "All"; break;

@@ -24,26 +24,14 @@ var MemCommandEnum;
     MemCommandEnum[MemCommandEnum["WRITE"] = 4] = "WRITE";
 })(MemCommandEnum || (MemCommandEnum = {}));
 var MemCommand = /** @class */ (function () {
-    function MemCommand(cmd, bank, addr) {
+    function MemCommand(cmd, bg, ba, bank, addr) {
         this.Command = cmd;
+        this.Bank = ba;
+        this.Group = bg;
         this.BankNum = bank;
         this.Address = addr;
         this.AutoPrecharge = false;
     }
-    Object.defineProperty(MemCommand.prototype, "BankGroup", {
-        get: function () {
-            return this.BankNum >> 2;
-        },
-        enumerable: false,
-        configurable: true
-    });
-    Object.defineProperty(MemCommand.prototype, "Bank", {
-        get: function () {
-            return this.BankNum & 3;
-        },
-        enumerable: false,
-        configurable: true
-    });
     MemCommand.prototype.toString = function () {
         var cmd;
         switch (this.Command) {
@@ -272,9 +260,9 @@ var MemoryController = /** @class */ (function () {
     };
     MemoryController.prototype.maybeEnqueueRefresh = function () {
         if (this.BankCmdQueue.every(function (q) { return q.Empty; }) && this.BankState.every(function (q) { return q.State !== BankStateEnum.Refreshing; })) {
-            var preCommand_1 = new MemCommand(MemCommandEnum.PRE, 0, 0);
+            var preCommand_1 = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
             preCommand_1.AutoPrecharge = true;
-            var refreshCommand_1 = new MemCommand(MemCommandEnum.REF, 0, 0);
+            var refreshCommand_1 = new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0);
             if (!this.BankCmdQueue.every(function (q) { return q.OpenRow === null; })) {
                 this.BankCmdQueue.forEach(function (q) { return q.QueueCommand(preCommand_1); });
             }
@@ -299,11 +287,11 @@ var MemoryController = /** @class */ (function () {
         var needsPreamble = false;
         var nextNeedsPreGap = false;
         var nextNeedsPreamble = false;
-        var totalCycles = 4;
+        var totalCycles = 1 << (this.AddrCfg.BL - 1);
         var preamble = (cmd.Command === MemCommandEnum.READ) ? this.tRPRE : this.tWPRE;
         var nextPreamble = (nextDqs && (nextDqs.Command.Command === MemCommandEnum.READ)) ? this.tRPRE : this.tWPRE;
-        var nextDqsDue = nextDqs ? nextDqs.DueCycles : delay + 4 + 1 + nextPreamble;
-        var prevDqsEnd = prevDqs ? prevDqs.DueCycles + 4 : delay - 1 - preamble;
+        var nextDqsDue = nextDqs ? nextDqs.DueCycles : delay + totalCycles + 1 + nextPreamble;
+        var prevDqsEnd = prevDqs ? prevDqs.DueCycles + totalCycles : delay - 1 - preamble;
         needsPreGap || (needsPreGap = prevDqs && prevDqs.Command.Command !== cmd.Command);
         needsPreamble || (needsPreamble = prevDqsEnd !== delay);
         needsPreamble || (needsPreamble = needsPreGap);
@@ -328,17 +316,17 @@ var MemoryController = /** @class */ (function () {
         return [true, totalCycles, delay];
     };
     MemoryController.prototype.issuePrechargeAllBanks = function () {
-        var preA = new MemCommand(MemCommandEnum.PRE, 0, 0);
+        var preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
         preA.AutoPrecharge = true;
         this.issueCommand(preA);
     };
     MemoryController.prototype.issueRefresh = function () {
-        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0));
+        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
     };
     MemoryController.prototype.issueCommand = function (cmd) {
         var bankState = this.BankState[cmd.BankNum];
         var bankHistory = this.BankHistory[cmd.BankNum];
-        var groupHistory = this.GroupHistory[cmd.BankGroup];
+        var groupHistory = this.GroupHistory[cmd.Group];
         var commandCycles = this.tCR * this.commandCycleMap[cmd.Command];
         cmd.NotLatched = commandCycles - 1;
         this.currentCommand = cmd;
@@ -457,14 +445,14 @@ var MemoryController = /** @class */ (function () {
             if (this.imcCommandQueue.length) {
                 var imcCommand = this.imcCommandQueue.shift();
                 var _b = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
-                var bankNum = MemoryController.BankNum(group, bank);
+                var bankNum = (group << this.AddrCfg.BA) | bank;
                 var bankQueue = this.BankCmdQueue[bankNum];
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
-                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, bankNum, 0));
-                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, bankNum, row));
+                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0));
+                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row));
                 }
-                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, bankNum, column));
+                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
             }
             else if (this.sinceRefresh >= (-4 * this.tREFI)) {
                 this.maybeEnqueueRefresh();
@@ -477,7 +465,7 @@ var MemoryController = /** @class */ (function () {
             var bankQueue = this.BankCmdQueue[i];
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
-            var groupHistory = this.GroupHistory[i >> 2];
+            var groupHistory = this.GroupHistory[i >> this.AddrCfg.BA];
             var dqsSchedule = void 0;
             bankQueue.StartIssueCheck();
             bankQueue.IssueCheck(this.currentCommand === null, "C/A bus available");
@@ -582,26 +570,21 @@ var MemoryController = /** @class */ (function () {
         this.dqsActive = false;
         if (this.dqsSchedule.length) {
             var dqs = this.dqsSchedule[0];
-            switch (dqs.DueCycles) {
-                case -3:
-                    this.dqsSchedule.shift();
-                    if (dqs.Command.Command === MemCommandEnum.WRITE) {
-                        this.BankState[dqs.Command.BankNum].WriteTxs--;
-                        this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
-                        this.GroupHistory[dqs.Command.BankGroup].SinceWriteData = -1;
-                        this.RankHistory.SinceWriteData = -1;
-                    }
-                /* fallthrough */
-                case -2:
-                case -1:
-                case 0:
-                    this.dqActive = [dqs.Command.Command, dqs.Command.BankGroup, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
-                    this.dqsActive = true;
-                    break;
-                case 1:
-                case 2:
-                    this.dqsActive = dqs.Preamble >= dqs.DueCycles;
-                    break;
+            if (dqs.DueCycles === -((1 << (this.AddrCfg.BL - 1)) - 1)) {
+                this.dqsSchedule.shift();
+                if (dqs.Command.Command === MemCommandEnum.WRITE) {
+                    this.BankState[dqs.Command.BankNum].WriteTxs--;
+                    this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
+                    this.GroupHistory[dqs.Command.Group].SinceWriteData = -1;
+                    this.RankHistory.SinceWriteData = -1;
+                }
+            }
+            if (dqs.DueCycles <= 0) {
+                this.dqActive = [dqs.Command.Command, dqs.Command.Group, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
+                this.dqsActive = true;
+            }
+            else {
+                this.dqsActive = dqs.Preamble >= dqs.DueCycles;
             }
         }
     };
@@ -649,9 +632,9 @@ var MemoryController = /** @class */ (function () {
             addr |= mem[0] & 1;
         }
         addr <<= this.AddrCfg.BL;
+        addr |= mem[3] & ((1 << this.AddrCfg.BL) - 1);
         return addr;
     };
-    MemoryController.BankNum = function (group, bank) { return (group << 2) | bank; };
     return MemoryController;
 }());
 function $x(e) { return document.getElementById(e); }
@@ -873,7 +856,7 @@ function renderCycleRow() {
         // BG/BA
         cell = document.createElement('td');
         cell.className = cmdClass;
-        cell.innerText = "".concat(cmd.BankGroup, "/").concat(cmd.Bank);
+        cell.innerText = "".concat(cmd.Group, "/").concat(cmd.Bank);
         switch (cmd.Command) {
             case MemCommandEnum.REF:
                 cell.innerText = "All";
