@@ -84,7 +84,7 @@
             float: right;
         }
 
-        #timings table {
+        #timings table, #timings div {
             width: 60em;
         }
 
@@ -108,14 +108,14 @@
             width: 11.5em;
         }
 
-        #timings input.collapse:checked ~ table tr > :nth-child(3) {
+        #timings input.collapse:checked ~ table tr > :nth-child(3), #timings input.collapse:checked ~ div {
             display: none;
         }
     </style>
 </head>
 <body>
 <div id="timings">
-    <input type="checkbox" class="collapse" checked />
+    <input type="checkbox" class="collapse" id="collapseNotes" />
     <table>
         <tr>
             <th>Timing</th>
@@ -134,9 +134,9 @@
         <tr>
             <td>tRCDrd</td>
             <td><input type="number" id="tRCDrd" value="22" /></td>
-            <td>
-                RAS-to-CAS Delay (Read)<br>
-                ACTIVATE-to-READ command period<br>
+            <td rowspan="2">
+                RAS-to-CAS Delay (Read/Write)<br>
+                ACTIVATE-to-READ/WRITE command period<br>
                 An ACTIVATE command takes this many cycles to process.<br>
                 On Intel: tRCD controls both, set tRCDrd/tRCDwr to same.
             </td>
@@ -144,12 +144,6 @@
         <tr>
             <td>tRCDwr</td>
             <td><input type="number" id="tRCDwr" value="22" /></td>
-            <td>
-                RAS-to-CAS Delay (Write)<br>
-                ACTIVATE-to-WRITE command period<br>
-                An ACTIVATE command takes this many cycles to process.<br>
-                On Intel: tRCD controls both, set tRCDrd/tRCDwr to same.
-            </td>
         </tr>
         <tr>
             <td>tCAS/tCL/tAA</td>
@@ -175,7 +169,7 @@
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to when a PRECHARGE command can be issued.<br>
                 It takes this many cycles for data to be moved into the core of RAM.<br>
-                On Intel platform: tWR = tWRPRE - tCWL - BL/2
+                On Intel: not configurable, calculated as tWR = tWRPRE - tCWL - BL/2
             </td>
         </tr>
         <tr>
@@ -212,7 +206,7 @@
                 RAS Cycling Time<br>
                 ACTIVATE-to-ACTIVATE/REFRESH command period<br>
                 The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
-                Implicitly set to tRP+tRAS on Intel.
+                On Intel: not configurable, calculated as tRC = tRP + tRAS
             </td>
         </tr>
         <tr>
@@ -248,8 +242,8 @@
                 Write To Read Time (Short)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank group.<br>
-                On Intel platform: tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
-                Not applicable to tWrRd on AMD, no idea what that controls.
+                On Intel: not configurable, calculated as tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
+                On AMD: check notes.
             </td>
         </tr>
         <tr>
@@ -259,8 +253,8 @@
                 Write To Read Time (Long)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank in the same bank group.<br>
-                On Intel platform: tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
-                Not applicable to tWrRd on AMD, no idea what that controls.
+                On Intel: not configurable, calculated as tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
+                On AMD: check notes.
             </td>
         </tr>
         <tr>
@@ -270,7 +264,7 @@
                 READ-to-READ Delay Long<br>
                 READ-to-READ command period to different bank in same bank group.<br>
                 Wait this many cycles before reading from another bank in the same bank group.<br>
-                On AMD: Seems like tRdRd_sg = tRdRdScL + 3, otherwise setting 1/2/3 makes no sense.
+                On AMD: Related to tRdRdScL, check notes.
             </td>
         </tr>
         <tr>
@@ -280,7 +274,7 @@
                 READ-to-READ Delay Short<br>
                 READ-to-READ command period to different bank group.<br>
                 Wait this many cycles before reading from another bank group.<br>
-                On AMD: Seems like tRdRd_dg = tRdRdSc + 3, otherwise setting 1/2/3 makes no sense.
+                On AMD: Related to tRdRdSc, check notes.
             </td>
         </tr>
         <tr>
@@ -290,7 +284,7 @@
                 WRITE-to-WRITE Delay Long<br>
                 WRITE-to-WRITE command period to different bank in same bank group.<br>
                 Wait this many cycles before writing to another bank in the same bank group.<br>
-                On AMD: Seems like tWrWr_sg = tWrWrScL + 3, otherwise setting 1/2/3 makes no sense.
+                On AMD: Related to tWrWrScL, check notes.
             </td>
         </tr>
         <tr>
@@ -300,29 +294,27 @@
                 WRITE-to-WRITE Delay Short<br>
                 WRITE-to-WRITE command period to different bank group.<br>
                 Wait this many cycles before writing to another bank group.<br>
-                On AMD: Seems like tWrWr_dg = tWrWrSc + 3, otherwise setting 1/2/3 makes no sense.
+                On AMD: Related to tWrWrSc, check notes.
             </td>
         </tr>
         <tr>
-            <td>tCCD_L</td>
-            <td><input type="number" id="tCCDl" value="5" /></td>
+            <td>tRdWr_sg</td>
+            <td><input type="number" id="tRdWrSg" value="5" /></td>
             <td>
-                CAS-to-CAS Delay Long<br>
-                READ/WRITE-to-READ/WRITE command period to different bank in same bank group.<br>
+                READ-to-WRITE Delay Long<br>
+                READ-to-WRITE command period to different bank in same bank group.<br>
                 Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
-                On Intel platforms it's probably tRdWr_sg, everything else is mapped.<br>
-                On AMD: tRdWr timing controls both, set tCCD_L and tCCD_S to same.
+                On AMD: check notes.
             </td>
         </tr>
         <tr>
-            <td>tCCD_S</td>
-            <td><input type="number" id="tCCDs" value="4" /></td>
+            <td>tRdWr_dg</td>
+            <td><input type="number" id="tRdWrDg" value="4" /></td>
             <td>
-                CAS-to-CAS Delay Short<br>
-                READ/WRITE-to-READ/WRITE command period to different bank group.<br>
+                READ-to-WRITE Delay Short<br>
+                READ-to-WRITE command period to different bank group.<br>
                 Wait this many cycles before reading from/writing to another bank group.<br>
-                On Intel platforms it's probably tRdWr_dg, everything else is mapped.<br>
-                On AMD: tRdWr timing controls both, set tCCD_L and tCCD_S to same.
+                On AMD: check notes.
             </td>
         </tr>
         <tr>
@@ -434,6 +426,47 @@
             </td>
         </tr>
     </table>
+    <div>
+        <p><b>Notes on AMD's t(Rd/Wr)(Rd/Wr)(Sc(L)) parameters:</b></p>
+        <p>
+            I'm not entirely sure what tRdRdSc(L)/tWrWrSc(L)/tRdWr/tWrRd control or how they control RAM timings.
+            My current theory is that tRdRdSc(L)/tWrWrSc(L) = tRdRd_dg(sg)/tWrWr_dg(sg) - 3 as otherwise these
+            should not accept 1, 2 or 3 as valid settings(DQ/DQS bus would be busy carrying out another command
+            at tCL/tCWL cycles after the commands are issued). AMD does not publish register/AGESA documentation
+            so this is merely a guess.
+        </p>
+        <p>
+            Following that tRdWr most likely controls both tRdWr_sg and tRdWr_dg, and sets them to tRdWr + 3.
+        </p>
+        <p>
+            However this theory breaks for tWrRd, so what it does is not clear to me. If like previous timings
+            this sets tWrRd_sg/dg then setting 1 makes no sense. Issuing READ while there is an WRITE in-flight is
+            forbidden by spec and some RAM would lock up if you try that. Besides, on AMD tWTR is configurable.
+            So um?
+        </p>
+        <p><b>Some rambling on Intel's tWrRd and tWTR:</b></p>
+        <p>
+            On Intel tWTR_S(L) = tWrRd_dg(sg) - tCWL - BL/2 <b>- 2</b><br>I'm not convinced on the "-2" part being there
+            just because, but I don't know enough to figure out why it's there.
+        </p>
+        <p>
+            Also on DDR5, BL=16 and some utilities written in the DDR4 era would still assume BL=8 and show the wrong
+            value for tWTR_S/L on Intel DDR5 platforms(tWTR_S/L DOES NOT EXIST on Intel). And maybe, just maybe, if your
+            UEFI BIOS allows setting tWTR_S/L on Intel DDR5 platform it could also be calculating tWRPRE with the wrong BL.
+        </p>
+        <p>
+            So when the new DDR5 AMD platform comes along(I'm writing this in Aug. 2022) and manages lower tWTR timing
+            by exactly 4, it might not be that Intel's IMC is crap but because utilities are displaying tWTR wrong.
+        </p>
+        <p><b>In case you're browsing memory datasheet or reading SPD data:</b></p>
+        <p>
+            All the t(RdRd/WrWr/RdWr)_sg timings are lumped into one timing: tCCD_L.<br>
+            All the t(RdRd/WrWr/RdWr)_dg timings are lumped into one timing: tCCD_S.<br>
+            tCL becomes tAA.
+        </p>
+        <p><b>Where are the _dr and _dg timings?</b></p>
+        <p>I do not want to add ranks/DIMMs, it's already complicated enough.</p>
+    </div>
 </div>
 <div id="controls">
     <input id="allCycles" type="checkbox" />Show NO-OP cycles

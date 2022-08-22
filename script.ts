@@ -212,8 +212,8 @@ class MemoryController {
     private readonly tWTRl: number;
     private readonly tWR: number;
     private readonly tRTP: number;
-    private readonly tCCDl: number;
-    private readonly tCCDs: number;
+    private readonly tRdWrSg: number;
+    private readonly tRdWrDg: number;
     private readonly tRdRdSg: number;
     private readonly tRdRdDg: number;
     private readonly tWrWrSg: number;
@@ -252,7 +252,7 @@ class MemoryController {
 
     public constructor(tCL: number, tCWL: number, tRCDrd: number, tRCDwr: number, tRP: number, tRAS: number, tRC: number,
                        tRRDs: number, tRRDl: number, tFAW: number, tWTRs: number, tWTRl: number,
-                       tWR: number, tRTP: number, tCCDl: number, tCCDs: number,
+                       tWR: number, tRTP: number, tRdWrSg: number, tRdWrDg: number,
                        tRdRdSg: number, tRdRdDg: number, tWrWrSg: number, tWrWrDg: number,
                        tREFI: number, tRFC: number, tCR: number, gdm: boolean, addrCfg: AddressMapConfig,
                        commandCycleMap?: Partial<Record<MemCommandEnum, number>>) {
@@ -270,8 +270,8 @@ class MemoryController {
         this.tWTRl = tWTRl;
         this.tWR = tWR;
         this.tRTP = tRTP;
-        this.tCCDl = tCCDl;
-        this.tCCDs = tCCDs;
+        this.tRdWrSg = tRdWrSg;
+        this.tRdWrDg = tRdWrDg;
         this.tRdRdSg = tRdRdSg;
         this.tRdRdDg = tRdRdDg;
         this.tWrWrSg = tWrWrSg;
@@ -588,11 +588,9 @@ class MemoryController {
                         bankQueue.IssueCheck(!bankState.WriteTxs, `In-flight WRITEs: ${bankState.WriteTxs}`);
 
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdRdSg, "tRdRd_sg/tRdRdScL", "Since READ in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrRd_sg/tWrRd", "Since WRITE in group");
                         bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
 
                         bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg/tRdRdSc", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrRd_dg/tWrRd", "Since WRITE in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
@@ -602,10 +600,10 @@ class MemoryController {
                         bankQueue.StateCheck("Bank active", bankState.State, BankStateEnum.Active, BankStateEnum.Activating);
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDwr, "tRCDwr", "Since bank ACT");
 
-                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdWr_sg/tRdWr", "Since READ in group");
+                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdWrSg, "tRdWr_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWrite, this.tWrWrSg, "tWrWr_sg/tWrWrScL", "Since WRITE in group");
 
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdWr_dg/tRdWr", "Since READ in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg/tWrWrSc", "Since WRITE in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
@@ -859,8 +857,8 @@ const allParams = [
     'tWTRl',
     'tWR',
     'tRTP',
-    'tCCDl',
-    'tCCDs',
+    'tRdWrSg',
+    'tRdWrDg',
     'tRdRdSg',
     'tRdRdDg',
     'tWrWrSg',
@@ -876,7 +874,9 @@ const allParams = [
     'blBits',
     'cycles',
     'allCycles',
-    'useAP'];
+    'useAP',
+    'collapseNotes'
+];
 
 function saveState() {
     const timings = {};
@@ -957,8 +957,8 @@ function createController() {
         parseInt((<HTMLInputElement>$x('tWTRl')).value),
         parseInt((<HTMLInputElement>$x('tWR')).value),
         parseInt((<HTMLInputElement>$x('tRTP')).value),
-        parseInt((<HTMLInputElement>$x('tCCDl')).value),
-        parseInt((<HTMLInputElement>$x('tCCDs')).value),
+        parseInt((<HTMLInputElement>$x('tRdWrSg')).value),
+        parseInt((<HTMLInputElement>$x('tRdWrDg')).value),
         parseInt((<HTMLInputElement>$x('tRdRdSg')).value),
         parseInt((<HTMLInputElement>$x('tRdRdDg')).value),
         parseInt((<HTMLInputElement>$x('tWrWrSg')).value),

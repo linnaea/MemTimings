@@ -188,7 +188,7 @@ var AddressMapConfig = /** @class */ (function () {
     return AddressMapConfig;
 }());
 var MemoryController = /** @class */ (function () {
-    function MemoryController(tCL, tCWL, tRCDrd, tRCDwr, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tRdRdSg, tRdRdDg, tWrWrSg, tWrWrDg, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
+    function MemoryController(tCL, tCWL, tRCDrd, tRCDwr, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tRdWrSg, tRdWrDg, tRdRdSg, tRdRdDg, tWrWrSg, tWrWrDg, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
         var _a;
         var _b, _c, _d, _e, _f;
         this.tCL = tCL;
@@ -205,8 +205,8 @@ var MemoryController = /** @class */ (function () {
         this.tWTRl = tWTRl;
         this.tWR = tWR;
         this.tRTP = tRTP;
-        this.tCCDl = tCCDl;
-        this.tCCDs = tCCDs;
+        this.tRdWrSg = tRdWrSg;
+        this.tRdWrDg = tRdWrDg;
         this.tRdRdSg = tRdRdSg;
         this.tRdRdDg = tRdRdDg;
         this.tWrWrSg = tWrWrSg;
@@ -519,10 +519,8 @@ var MemoryController = /** @class */ (function () {
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDrd, "tRCDrd", "Since bank ACT");
                         bankQueue.IssueCheck(!bankState.WriteTxs, "In-flight WRITEs: ".concat(bankState.WriteTxs));
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdRdSg, "tRdRd_sg/tRdRdScL", "Since READ in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrRd_sg/tWrRd", "Since WRITE in group");
                         bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
                         bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg/tRdRdSc", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrRd_dg/tWrRd", "Since WRITE in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
@@ -530,9 +528,9 @@ var MemoryController = /** @class */ (function () {
                     case MemCommandEnum.WRITE:
                         bankQueue.StateCheck("Bank active", bankState.State, BankStateEnum.Active, BankStateEnum.Activating);
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDwr, "tRCDwr", "Since bank ACT");
-                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdWr_sg/tRdWr", "Since READ in group");
+                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdWrSg, "tRdWr_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWrite, this.tWrWrSg, "tWrWr_sg/tWrWrScL", "Since WRITE in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdWr_dg/tRdWr", "Since READ in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg/tWrWrSc", "Since WRITE in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
@@ -758,8 +756,8 @@ var allParams = [
     'tWTRl',
     'tWR',
     'tRTP',
-    'tCCDl',
-    'tCCDs',
+    'tRdWrSg',
+    'tRdWrDg',
     'tRdRdSg',
     'tRdRdDg',
     'tWrWrSg',
@@ -775,7 +773,8 @@ var allParams = [
     'blBits',
     'cycles',
     'allCycles',
-    'useAP'
+    'useAP',
+    'collapseNotes'
 ];
 function saveState() {
     var timings = {};
@@ -835,7 +834,7 @@ function createController() {
         commandCycleMap[MemCommandEnum.WRITE] = 2;
     }
     mcCommands = getImcCommands();
-    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCDrd').value), parseInt($x('tRCDwr').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tRdRdSg').value), parseInt($x('tRdRdDg').value), parseInt($x('tWrWrSg').value), parseInt($x('tWrWrDg').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
+    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCDrd').value), parseInt($x('tRCDwr').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tRdWrSg').value), parseInt($x('tRdWrDg').value), parseInt($x('tRdRdSg').value), parseInt($x('tRdRdDg').value), parseInt($x('tWrWrSg').value), parseInt($x('tWrWrDg').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
     memClock = parseInt($x('memTxSpeed').value);
     var mcString = (memClock * 3).toString();
     if (mcString.match(/98$/)) {
