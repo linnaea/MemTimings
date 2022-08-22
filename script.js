@@ -131,6 +131,17 @@ var CommandQueue = /** @class */ (function () {
         this.IssueChecks.push([pass, desc]);
         this.canIssue = pass && this.canIssue;
     };
+    CommandQueue.prototype.StateCheck = function (desc, currentState) {
+        var allowedStates = [];
+        for (var _i = 2; _i < arguments.length; _i++) {
+            allowedStates[_i - 2] = arguments[_i];
+        }
+        var pass = false;
+        for (var i = 0; !pass && i < allowedStates.length; i++) {
+            pass = currentState === allowedStates[i];
+        }
+        this.IssueCheck(pass, desc);
+    };
     CommandQueue.prototype.TimingCheck = function (toCheck, target, name, desc) {
         var commandCycles = this.tCR * this.commandCycleMap[this.CheckCmd.Command];
         this.IssueCheck((toCheck + commandCycles) > target, "".concat(desc, ": ").concat(toCheck, " + ").concat(commandCycles, "(tCR) > ").concat(target, "(").concat(name, ")"));
@@ -177,12 +188,13 @@ var AddressMapConfig = /** @class */ (function () {
     return AddressMapConfig;
 }());
 var MemoryController = /** @class */ (function () {
-    function MemoryController(tCL, tCWL, tRCD, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
+    function MemoryController(tCL, tCWL, tRCDrd, tRCDwr, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tCCDl, tCCDs, tRdRdSg, tRdRdDg, tWrWrSg, tWrWrDg, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
         var _a;
         var _b, _c, _d, _e, _f;
         this.tCL = tCL;
         this.tCWL = tCWL;
-        this.tRCD = tRCD;
+        this.tRCDrd = tRCDrd;
+        this.tRCDwr = tRCDwr;
         this.tRP = tRP;
         this.tRAS = tRAS;
         this.tRC = tRC;
@@ -195,6 +207,10 @@ var MemoryController = /** @class */ (function () {
         this.tRTP = tRTP;
         this.tCCDl = tCCDl;
         this.tCCDs = tCCDs;
+        this.tRdRdSg = tRdRdSg;
+        this.tRdRdDg = tRdRdDg;
+        this.tWrWrSg = tWrWrSg;
+        this.tWrWrDg = tWrWrDg;
         this.tREFI = tREFI;
         this.tRFC = tRFC;
         this.AddrCfg = addrCfg;
@@ -296,7 +312,7 @@ var MemoryController = /** @class */ (function () {
         needsPreamble || (needsPreamble = prevDqsEnd !== delay);
         needsPreamble || (needsPreamble = needsPreGap);
         nextNeedsPreGap || (nextNeedsPreGap = nextDqs && nextDqs.Command.Command !== cmd.Command);
-        nextNeedsPreamble || (nextNeedsPreamble = nextDqsDue - 4 !== delay);
+        nextNeedsPreamble || (nextNeedsPreamble = nextDqsDue - totalCycles !== delay);
         nextNeedsPreamble || (nextNeedsPreamble = nextNeedsPreGap);
         if (needsPreGap)
             totalCycles++;
@@ -308,11 +324,11 @@ var MemoryController = /** @class */ (function () {
             totalCycles += nextPreamble;
         if ((nextDqsDue - prevDqsEnd) < totalCycles)
             return [false, totalCycles, delay];
-        if (dryRun)
-            return [true, totalCycles, delay];
-        if (nextDqs)
-            nextDqs.Preamble = nextNeedsPreamble ? nextPreamble : 0;
-        this.dqsSchedule.splice(i, 0, new DqsSchedule(delay, this.BankState[cmd.BankNum].CurrentOpenRow, cmd, needsPreamble ? preamble : 0));
+        if (!dryRun) {
+            if (nextDqs)
+                nextDqs.Preamble = nextNeedsPreamble ? nextPreamble : 0;
+            this.dqsSchedule.splice(i, 0, new DqsSchedule(delay, this.BankState[cmd.BankNum].CurrentOpenRow, cmd, needsPreamble ? preamble : 0));
+        }
         return [true, totalCycles, delay];
     };
     MemoryController.prototype.issuePrechargeAllBanks = function () {
@@ -410,7 +426,7 @@ var MemoryController = /** @class */ (function () {
                 case BankStateEnum.Idle:
                     break;
                 case BankStateEnum.Activating:
-                    if (bankState.StateCycles + this.tCR > this.tRCD) {
+                    if (bankState.StateCycles + this.tCR > Math.max(this.tRCDrd, this.tRCDwr)) {
                         bankState.State = BankStateEnum.Active;
                         bankState.StateCycles = 0;
                     }
@@ -476,24 +492,22 @@ var MemoryController = /** @class */ (function () {
                 var cmd = bankQueue.FirstCommand;
                 switch (cmd.Command) {
                     case MemCommandEnum.ACT:
-                        bankQueue.IssueCheck(bankState.State === BankStateEnum.Idle, "Bank idle");
+                        bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
                         bankQueue.TimingCheck(groupHistory.SinceActivate, this.tRRDl, "tRRD_L", "Since ACT in group");
                         bankQueue.TimingCheck(this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
                         bankQueue.IssueCheck(this.fawTracking.length < 4, "ACTs in rank in tFAW: [".concat(this.fawTracking.join(', '), "]"));
                         break;
                     case MemCommandEnum.REF:
-                        bankQueue.IssueCheck(bankState.State === BankStateEnum.Idle, "Bank idle");
+                        bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
                         break;
                     case MemCommandEnum.PRE:
                         if (cmd.AutoPrecharge) {
-                            bankQueue.IssueCheck(bankState.State === BankStateEnum.Active
-                                || bankState.State === BankStateEnum.Precharging
-                                || bankState.State === BankStateEnum.Idle, "PreA: Bank active or idle");
+                            bankQueue.StateCheck("PreA: Bank active or idle", bankState.State, BankStateEnum.Active, BankStateEnum.Activating, BankStateEnum.Precharging, BankStateEnum.Idle);
                         }
                         else {
-                            bankQueue.IssueCheck(bankState.State === BankStateEnum.Active, "Bank active");
+                            bankQueue.StateCheck("Bank active", bankState.State, BankStateEnum.Active, BankStateEnum.Activating);
                         }
                         bankQueue.IssueCheck(!bankState.WriteTxs, "In-flight WRITEs: ".concat(bankState.WriteTxs));
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRAS, "tRAS", "Since ACT");
@@ -501,23 +515,25 @@ var MemoryController = /** @class */ (function () {
                         bankQueue.TimingCheck(bankHistory.SinceWriteData, this.tWR, "tWR", "Since WRITE Tx");
                         break;
                     case MemCommandEnum.READ:
-                        bankQueue.IssueCheck(bankState.State === BankStateEnum.Active, "Bank active");
+                        bankQueue.StateCheck("Bank active", bankState.State, BankStateEnum.Active, BankStateEnum.Activating);
+                        bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDrd, "tRCDrd", "Since bank ACT");
                         bankQueue.IssueCheck(!bankState.WriteTxs, "In-flight WRITEs: ".concat(bankState.WriteTxs));
-                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdRd_sg/tRdRdScL", "Since READ in group");
+                        bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdRdSg, "tRdRd_sg/tRdRdScL", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrRd_sg/tWrRd", "Since WRITE in group");
                         bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdRd_dg/tRdRdSc", "Since READ in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg/tRdRdSc", "Since READ in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrRd_dg/tWrRd", "Since WRITE in rank");
                         bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
                         break;
                     case MemCommandEnum.WRITE:
-                        bankQueue.IssueCheck(bankState.State === BankStateEnum.Active, "Bank is active");
+                        bankQueue.StateCheck("Bank active", bankState.State, BankStateEnum.Active, BankStateEnum.Activating);
+                        bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDwr, "tRCDwr", "Since bank ACT");
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tCCDl, "tCCD_L/tRdWr_sg/tRdWr", "Since READ in group");
-                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tCCDl, "tCCD_L/tWrWr_sg/tWrWrScL", "Since WRITE in group");
+                        bankQueue.TimingCheck(groupHistory.SinceWrite, this.tWrWrSg, "tWrWr_sg/tWrWrScL", "Since WRITE in group");
                         bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tCCDs, "tCCD_S/tRdWr_dg/tRdWr", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tCCDs, "tCCD_S/tWrWr_dg/tWrWrSc", "Since WRITE in rank");
+                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg/tWrWrSc", "Since WRITE in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
                         break;
@@ -730,7 +746,8 @@ var cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(fun
 var allParams = [
     'tCL',
     'tCWL',
-    'tRCD',
+    'tRCDrd',
+    'tRCDwr',
     'tRP',
     'tRAS',
     'tRC',
@@ -743,6 +760,10 @@ var allParams = [
     'tRTP',
     'tCCDl',
     'tCCDs',
+    'tRdRdSg',
+    'tRdRdDg',
+    'tWrWrSg',
+    'tWrWrDg',
     'tREFI',
     'tRFC',
     'tCR',
@@ -802,6 +823,7 @@ function loadState(state) {
     }
 }
 var mc;
+var memClock;
 var mcUseDdr5;
 var mcCommands;
 function createController() {
@@ -813,7 +835,19 @@ function createController() {
         commandCycleMap[MemCommandEnum.WRITE] = 2;
     }
     mcCommands = getImcCommands();
-    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCD').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
+    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCDrd').value), parseInt($x('tRCDwr').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tCCDl').value), parseInt($x('tCCDs').value), parseInt($x('tRdRdSg').value), parseInt($x('tRdRdDg').value), parseInt($x('tWrWrSg').value), parseInt($x('tWrWrDg').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
+    memClock = parseInt($x('memTxSpeed').value);
+    var mcString = (memClock * 3).toString();
+    if (mcString.match(/98$/)) {
+        memClock += 2 / 3;
+    }
+    else if (mcString.match(/99$/)) {
+        memClock += 1 / 3;
+    }
+    else if (mcString.match(/01$/)) {
+        memClock -= 1 / 3;
+    }
+    memClock /= 2;
     mc.UseAutoPrecharge = !!$x('useAP').checked;
     return mc;
 }
@@ -823,6 +857,9 @@ function getOrCreateController() {
 function renderCycleRow() {
     var row = document.createElement('tr');
     var cell = document.createElement('td');
+    cell.innerText = (1000 * mc.CurrentCycle / memClock).toFixed(1);
+    row.appendChild(cell);
+    cell = document.createElement('td');
     cell.innerText = mc.CurrentCycle.toString();
     row.appendChild(cell);
     if (mc.CurrentCommand) {

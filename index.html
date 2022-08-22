@@ -35,7 +35,7 @@
         td.logF {
             background-color: #f9a;
         }
-        tr > td:nth-child(1) {
+        tr > td:nth-child(1), #cycleTable tr > td:nth-child(2) {
             text-align: right !important;
         }
 
@@ -60,7 +60,7 @@
 
         .contentBox {
             margin-top: 0.75em;
-            height: calc(33% - 2.5em);
+            max-height: 50%;
             width: max-content;
             overflow-y: auto;
             padding: 0.25em;
@@ -75,7 +75,7 @@
             font-size: smaller;
         }
 
-        #cmdTable, #cycleTable {
+        #cmdTable, #cycleTable, #timings {
             font-family: monospace;
             font-size: larger;
         }
@@ -85,7 +85,7 @@
         }
 
         #timings table {
-            width: 59em;
+            width: 60em;
         }
 
         #timings input.collapse {
@@ -105,7 +105,7 @@
         }
 
         #timings input.collapse:checked ~ table {
-            width: 11.25em;
+            width: 11.5em;
         }
 
         #timings input.collapse:checked ~ table tr > :nth-child(3) {
@@ -123,12 +123,40 @@
             <th>Remarks</th>
         </tr>
         <tr>
+            <td>Speed (Mbps)</td>
+            <td><input type="number" id="memTxSpeed" value="3733" /></td>
+            <td>
+                Not clock speed, transfer speed.<br>
+                Clock speed is half of this.<br>
+                Also called MT/s by Micron.
+            </td>
+        </tr>
+        <tr>
+            <td>tRCDrd</td>
+            <td><input type="number" id="tRCDrd" value="22" /></td>
+            <td>
+                RAS-to-CAS Delay (Read)<br>
+                ACTIVATE-to-READ command period<br>
+                An ACTIVATE command takes this many cycles to process.<br>
+                On Intel: tRCD controls both, set tRCDrd/tRCDwr to same.
+            </td>
+        </tr>
+        <tr>
+            <td>tRCDwr</td>
+            <td><input type="number" id="tRCDwr" value="22" /></td>
+            <td>
+                RAS-to-CAS Delay (Write)<br>
+                ACTIVATE-to-WRITE command period<br>
+                An ACTIVATE command takes this many cycles to process.<br>
+                On Intel: tRCD controls both, set tRCDrd/tRCDwr to same.
+            </td>
+        </tr>
+        <tr>
             <td>tCAS/tCL/tAA</td>
             <td><input type="number" id="tCL" value="18" /></td>
             <td>
                 Column-Access-Strobe (Read) Latency<br>
-                A READ command takes this many cycles to process.<br>
-                When Gear-Down is enabled this must be even.
+                A READ command takes this many cycles to process.
             </td>
         </tr>
         <tr>
@@ -140,13 +168,23 @@
             </td>
         </tr>
         <tr>
-            <td>tRCD</td>
-            <td><input type="number" id="tRCD" value="22" /></td>
+            <td>tWR</td>
+            <td><input type="number" id="tWR" value="12" /></td>
             <td>
-                RAS-to-CAS Delay<br>
-                ACTIVATE-to-READ/WRITE command period<br>
-                An ACTIVATE command takes this many cycles to process.<br>
-                On AMD platform it's split into tRCDrd and tRCDwr.
+                Write Recovery Time<br>
+                Delay from an WRITE operation is started on RAM(after data is sent)<br>
+                to when a PRECHARGE command can be issued.<br>
+                It takes this many cycles for data to be moved into the core of RAM.<br>
+                On Intel platform: tWR = tWRPRE - tCWL - BL/2
+            </td>
+        </tr>
+        <tr>
+            <td>tRTP/tRDPRE</td>
+            <td><input type="number" id="tRTP" value="12" /></td>
+            <td>
+                Read To Precharge Time<br>
+                READ-to-PRECHARGE command period<br>
+                It takes this many cycles for data to be moved back into the core of RAM.
             </td>
         </tr>
         <tr>
@@ -171,7 +209,7 @@
             <td>tRC</td>
             <td><input type="number" id="tRC" value="68" /></td>
             <td>
-                Row Cycling Time<br>
+                RAS Cycling Time<br>
                 ACTIVATE-to-ACTIVATE/REFRESH command period<br>
                 The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
                 Implicitly set to tRP+tRAS on Intel.
@@ -181,7 +219,7 @@
             <td>tRRD_S</td>
             <td><input type="number" id="tRRDs" value="7" /></td>
             <td>
-                RAS to RAS Delay (Short)<br>
+                RAS-to-RAS Delay (Short)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank group.<br>
                 Wait this many cycles before activating another row in a different bank group.
             </td>
@@ -190,7 +228,7 @@
             <td>tRRD_L</td>
             <td><input type="number" id="tRRDl" value="10" /></td>
             <td>
-                RAS to RAS Delay (Long)<br>
+                RAS-to-RAS Delay (Long)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
                 Wait this many cycles before activating another row in the same bank group.
             </td>
@@ -209,7 +247,9 @@
             <td>
                 Write To Read Time (Short)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                to issuing a READ command to a different bank group.
+                to issuing a READ command to a different bank group.<br>
+                On Intel platform: tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
+                Not applicable to tWrRd on AMD, no idea what that controls.
             </td>
         </tr>
         <tr>
@@ -218,28 +258,49 @@
             <td>
                 Write To Read Time (Long)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                to issuing a READ command to a different bank in the same bank group.
+                to issuing a READ command to a different bank in the same bank group.<br>
+                On Intel platform: tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
+                Not applicable to tWrRd on AMD, no idea what that controls.
             </td>
         </tr>
         <tr>
-            <td>tWR</td>
-            <td><input type="number" id="tWR" value="12" /></td>
+            <td>tRdRd_sg</td>
+            <td><input type="number" id="tRdRdSg" value="5" /></td>
             <td>
-                Write Recovery Time<br>
-                Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                to when a PRECHARGE command can be issued.<br>
-                It takes this many cycles for data to be moved into the core of RAM.<br>
-                When Gear-Down is enabled this must be even.
+                READ-to-READ Delay Long<br>
+                READ-to-READ command period to different bank in same bank group.<br>
+                Wait this many cycles before reading from another bank in the same bank group.<br>
+                On AMD: Seems like tRdRd_sg = tRdRdScL + 3, otherwise setting 1/2/3 makes no sense.
             </td>
         </tr>
         <tr>
-            <td>tRTP</td>
-            <td><input type="number" id="tRTP" value="12" /></td>
+            <td>tRdRd_dg</td>
+            <td><input type="number" id="tRdRdDg" value="4" /></td>
             <td>
-                Read To Precharge Time<br>
-                READ-to-PRECHARGE command period<br>
-                It takes this many cycles for data to be moved back into the core of RAM.<br>
-                When Gear-Down is enabled this must be even.
+                READ-to-READ Delay Short<br>
+                READ-to-READ command period to different bank group.<br>
+                Wait this many cycles before reading from another bank group.<br>
+                On AMD: Seems like tRdRd_dg = tRdRdSc + 3, otherwise setting 1/2/3 makes no sense.
+            </td>
+        </tr>
+        <tr>
+            <td>tWrWr_sg</td>
+            <td><input type="number" id="tWrWrSg" value="5" /></td>
+            <td>
+                WRITE-to-WRITE Delay Long<br>
+                WRITE-to-WRITE command period to different bank in same bank group.<br>
+                Wait this many cycles before writing to another bank in the same bank group.<br>
+                On AMD: Seems like tWrWr_sg = tWrWrScL + 3, otherwise setting 1/2/3 makes no sense.
+            </td>
+        </tr>
+        <tr>
+            <td>tWrWr_dg</td>
+            <td><input type="number" id="tWrWrDg" value="4" /></td>
+            <td>
+                WRITE-to-WRITE Delay Short<br>
+                WRITE-to-WRITE command period to different bank group.<br>
+                Wait this many cycles before writing to another bank group.<br>
+                On AMD: Seems like tWrWr_dg = tWrWrSc + 3, otherwise setting 1/2/3 makes no sense.
             </td>
         </tr>
         <tr>
@@ -249,8 +310,8 @@
                 CAS-to-CAS Delay Long<br>
                 READ/WRITE-to-READ/WRITE command period to different bank in same bank group.<br>
                 Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
-                On Intel platforms it's split into RdRd/WrWr/RdWr/WrRd_sg.<br>
-                On AMD platforms it's split into RdRdScL/WrWrScL and probably RdWr.
+                On Intel platforms it's probably tRdWr_sg, everything else is mapped.<br>
+                On AMD: tRdWr timing controls both, set tCCD_L and tCCD_S to same.
             </td>
         </tr>
         <tr>
@@ -260,8 +321,8 @@
                 CAS-to-CAS Delay Short<br>
                 READ/WRITE-to-READ/WRITE command period to different bank group.<br>
                 Wait this many cycles before reading from/writing to another bank group.<br>
-                On Intel platforms it's further divided into RdRd/WrWr/RdWr/WrRd_dg.<br>
-                On AMD platforms it's split into RdRdSc/WrWrSc and probably WrRd.
+                On Intel platforms it's probably tRdWr_dg, everything else is mapped.<br>
+                On AMD: tRdWr timing controls both, set tCCD_L and tCCD_S to same.
             </td>
         </tr>
         <tr>
@@ -329,6 +390,7 @@
             <td>BG Bits</td>
             <td><input id="bgBits" type="number" value="2" /></td>
             <td>
+                Bank Group bits.<br>
                 Use 0 for DDR3, 1 for DDR4 x16, 2 for DDR4 x8/x4 and DDR5 x16, 3 for DDR5 x8/x4.
             </td>
         </tr>
@@ -336,21 +398,22 @@
             <td>BA Bits</td>
             <td><input id="baBits" type="number" value="2" /></td>
             <td>
-                Bank bits, usually 2 for DDR4/DDR5, 3 for DDR3, 1 on some low-capacity DDR5 memory.
+                Bank Address bits.<br>
+                Usually 2 for DDR4/DDR5, 3 for DDR3, 1 on some low-capacity DDR5 memory.
             </td>
         </tr>
         <tr>
             <td>CA Bits</td>
             <td><input id="caBits" type="number" value="10" /></td>
             <td>
-                Column bits, 11 for DDR5 x4, 10 for everything else.
+                Column Address bits. 11 for DDR5 x4, 10 for everything else.
             </td>
         </tr>
         <tr>
             <td>BL (log2)</td>
             <td><input id="blBits" type="number" value="3" /></td>
             <td>
-                Use 3 for DDR3/DDR4, 4 for DDR5.
+                Burst Length. Use 3(BL=8) for DDR3/DDR4, 4(BL=16) for DDR5.
             </td>
         </tr>
         <tr>
@@ -367,7 +430,7 @@
             <td>
                 Gear-Down Mode (DDR4)<br>
                 Latch Command/Address every other cycle only.<br>
-                tCL/tWR/tRTP must be even when enabled.
+                tCL/tCWL/tWR/tRTP must be even when enabled.
             </td>
         </tr>
     </table>
@@ -380,7 +443,7 @@
     <button id="step">Single Step</button>
     <button id="reset">Reset</button>
     <br>
-    Address maps as RA:BG[:2]:BA:BG1:CA[:3]:BG0:CA[2:0]
+    Address maps as RA:BG[:2]:BA:BG1:CA[:BL]:BG0:CA[BL-1:0]
     <br>
 </div>
 
@@ -404,6 +467,7 @@
     <table id="cycleTable">
         <thead>
         <tr>
+            <th>Time(ns)</th>
             <th>Cycle</th>
             <th>Command</th>
             <th>BG/BA</th>
