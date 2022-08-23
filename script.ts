@@ -212,6 +212,8 @@ class MemoryController {
     private readonly tWTRl: number;
     private readonly tWR: number;
     private readonly tRTP: number;
+    private readonly tWRa: number;
+    private readonly tRTPa: number;
     private readonly tRdWrSg: number;
     private readonly tRdWrDg: number;
     private readonly tRdRdSg: number;
@@ -226,7 +228,6 @@ class MemoryController {
     private readonly gearDown: boolean;
     private readonly commandCycleMap: Record<MemCommandEnum, number>;
     public readonly AddrCfg: AddressMapConfig;
-    public UseAutoPrecharge: boolean;
 
     public readonly BankState: BankState[];
     public readonly BankHistory: CommandHistory[];
@@ -252,7 +253,7 @@ class MemoryController {
 
     public constructor(tCL: number, tCWL: number, tRCDrd: number, tRCDwr: number, tRP: number, tRAS: number, tRC: number,
                        tRRDs: number, tRRDl: number, tFAW: number, tWTRs: number, tWTRl: number,
-                       tWR: number, tRTP: number, tRdWrSg: number, tRdWrDg: number,
+                       tWR: number, tRTP: number, tWRa: number, tRTPa: number, tRdWrSg: number, tRdWrDg: number,
                        tRdRdSg: number, tRdRdDg: number, tWrWrSg: number, tWrWrDg: number,
                        tREFI: number, tRFC: number, tCR: number, gdm: boolean, addrCfg: AddressMapConfig,
                        commandCycleMap?: Partial<Record<MemCommandEnum, number>>) {
@@ -270,6 +271,8 @@ class MemoryController {
         this.tWTRl = tWTRl;
         this.tWR = tWR;
         this.tRTP = tRTP;
+        this.tWRa = tWRa;
+        this.tRTPa = tRTPa;
         this.tRdWrSg = tRdWrSg;
         this.tRdWrDg = tRdWrDg;
         this.tRdRdSg = tRdRdSg;
@@ -509,8 +512,8 @@ class MemoryController {
                 case BankStateEnum.Active:
                     if (bankState.WillPrecharge &&
                         !bankState.WriteTxs &&
-                        bankHistory.SinceRead + this.tCR > this.tRTP &&
-                        bankHistory.SinceWriteData + this.tCR > this.tWR &&
+                        bankHistory.SinceRead + this.tCR > this.tRTPa &&
+                        bankHistory.SinceWriteData + this.tCR > this.tWRa &&
                         bankHistory.SinceActivate + this.tCR > this.tRAS) {
                         bankState.State = BankStateEnum.Precharging;
                         bankState.CurrentOpenRow = null;
@@ -642,12 +645,17 @@ class MemoryController {
                 if (cmd.Command === MemCommandEnum.REF) continue;
                 bankQueue.DequeueCommand();
 
-                let canAutoPrecharge = this.UseAutoPrecharge;
-                canAutoPrecharge &&= cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
+                let canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
                 canAutoPrecharge &&= bankQueue.FirstCommand?.Command === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge;
+
                 if (cmd.Command === MemCommandEnum.READ) {
                     const tWTRa = this.tWR - this.tRTP;
                     canAutoPrecharge &&= bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa;
+                    canAutoPrecharge &&= this.tRTPa === this.tRTP;
+                }
+
+                if (cmd.Command === MemCommandEnum.WRITE) {
+                    canAutoPrecharge &&= this.tWRa === this.tWR;
                 }
 
                 if (canAutoPrecharge) {
@@ -919,7 +927,7 @@ function loadState(state?: {
                 const [ci, rw, ai] = addCmdRow();
                 ci.value = (1 + cmd.Cycle).toString();
                 rw.checked = !!cmd.IsWrite;
-                ai.value = toHex(cmd.Address ?? 0, 8);
+                ai.value = toHex(cmd.Address ?? 0, 9);
             }
         }
     } else {
@@ -941,6 +949,44 @@ function createController() {
         commandCycleMap[MemCommandEnum.WRITE] = 2;
     }
 
+    const tWR = parseInt((<HTMLInputElement>$x('tWR')).value);
+    const tRTP = parseInt((<HTMLInputElement>$x('tRTP')).value);
+    let tWRa, tRTPa;
+    if (mcUseDdr5) {
+        commandCycleMap[MemCommandEnum.ACT] = 2;
+        commandCycleMap[MemCommandEnum.READ] = 2;
+        commandCycleMap[MemCommandEnum.WRITE] = 2;
+        if (tRTP <= 12) {
+            tRTPa = 12;
+        } else if (tRTP >= 24) {
+            tRTPa = 24;
+        } else {
+            tRTPa = Math.ceil(Math.ceil(tRTP / 1.5) * 1.5);
+        }
+
+        if (tWR <= 48) {
+            tWRa = 48;
+        } else if (tWR >= 96) {
+            tWRa = 96;
+        } else {
+            tWRa = Math.ceil(tWR / 6) * 6;
+        }
+    } else {
+        if (tRTP <= 5) {
+            tRTPa = 5;
+        } else if (tRTP >= 14) {
+            tRTPa = 14;
+        } else {
+            tRTPa = tRTP;
+        }
+
+        tWRa = tRTPa * 2;
+    }
+
+    if (!(<HTMLInputElement>$x('useAP')).checked) {
+        tWRa = tRTPa = null;
+    }
+
     mcCommands = getImcCommands();
     mc = new MemoryController(
         parseInt((<HTMLInputElement>$x('tCL')).value),
@@ -955,8 +1001,7 @@ function createController() {
         parseInt((<HTMLInputElement>$x('tFAW')).value),
         parseInt((<HTMLInputElement>$x('tWTRs')).value),
         parseInt((<HTMLInputElement>$x('tWTRl')).value),
-        parseInt((<HTMLInputElement>$x('tWR')).value),
-        parseInt((<HTMLInputElement>$x('tRTP')).value),
+        tWR, tRTP, tWRa, tRTPa,
         parseInt((<HTMLInputElement>$x('tRdWrSg')).value),
         parseInt((<HTMLInputElement>$x('tRdWrDg')).value),
         parseInt((<HTMLInputElement>$x('tRdRdSg')).value),
@@ -982,7 +1027,6 @@ function createController() {
     }
 
     memClock /= 2;
-    mc.UseAutoPrecharge = !!(<HTMLInputElement>$x('useAP')).checked;
     return mc;
 }
 
@@ -1178,7 +1222,7 @@ function renderCycleRow() {
     if (mc.DqActive) {
         dq[0] = (mc.DqActive && mc.DqActive[0] === MemCommandEnum.READ) ? 'R' : 'W';
         // @ts-ignore
-        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 8);
+        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 9);
     }
     cell = document.createElement('td');
     cell.innerText = mc.DqActive ? dq.join(' ') : '';

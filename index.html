@@ -135,7 +135,7 @@
             <td>tRCDrd</td>
             <td><input type="number" id="tRCDrd" value="22" /></td>
             <td rowspan="2">
-                RAS-to-CAS Delay (Read/Write)<br>
+                <b>R</b>AS-to-<b>C</b>AS <b>D</b>elay (<b>R</b>ea<b>d</b>/<b>Wr</b>ite)<br>
                 ACTIVATE-to-READ/WRITE command period<br>
                 An ACTIVATE command takes this many cycles to process.<br>
                 On Intel: tRCD controls both, set tRCDrd/tRCDwr to same.
@@ -149,7 +149,7 @@
             <td>tCAS/tCL/tAA</td>
             <td><input type="number" id="tCL" value="18" /></td>
             <td>
-                Column-Access-Strobe (Read) Latency<br>
+                <b>C</b>AS (Read) <b>L</b>atency<br>
                 A READ command takes this many cycles to process.
             </td>
         </tr>
@@ -157,7 +157,7 @@
             <td>tCWL/tCWD</td>
             <td><input type="number" id="tCWL" value="17" /></td>
             <td>
-                Column-Access-Strobe (Write) Latency<br>
+                <b>C</b>AS (<b>W</b>rite) <b>L</b>atency<br>
                 The RAM needs this many cycles to get ready to accept data after a WRITE command is issued.
             </td>
         </tr>
@@ -165,7 +165,7 @@
             <td>tWR</td>
             <td><input type="number" id="tWR" value="12" /></td>
             <td>
-                Write Recovery Time<br>
+                <b>W</b>rite <b>R</b>ecovery Time<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to when a PRECHARGE command can be issued.<br>
                 It takes this many cycles for data to be moved into the core of RAM.<br>
@@ -176,7 +176,7 @@
             <td>tRTP/tRDPRE</td>
             <td><input type="number" id="tRTP" value="12" /></td>
             <td>
-                Read To Precharge Time<br>
+                <b>R</b>ead <b>T</b>o <b>P</b>recharge Time<br>
                 READ-to-PRECHARGE command period<br>
                 It takes this many cycles for data to be moved back into the core of RAM.
             </td>
@@ -185,7 +185,7 @@
             <td>tRP</td>
             <td><input type="number" id="tRP" value="22" /></td>
             <td>
-                Row Precharge Time<br>
+                <b>R</b>ow <b>P</b>recharge Time<br>
                 PRECHARGE-to-ACTIVATE/REFRESH command period<br>
                 An PRECHARGE command takes this many cycles to process.
             </td>
@@ -194,7 +194,7 @@
             <td>tRAS</td>
             <td><input type="number" id="tRAS" value="42" /></td>
             <td>
-                Row Active Sustained Time<br>
+                <b>R</b>ow <b>A</b>ctive <b>S</b>ustained Time<br>
                 ACTIVATE-to-PRECHARGE command period<br>
                 A row must stay active for at least this many cycles.
             </td>
@@ -203,7 +203,7 @@
             <td>tRC</td>
             <td><input type="number" id="tRC" value="68" /></td>
             <td>
-                RAS Cycling Time<br>
+                <b>R</b>AS <b>C</b>ycling Time<br>
                 ACTIVATE-to-ACTIVATE/REFRESH command period<br>
                 The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
                 On Intel: not configurable, calculated as tRC = tRP + tRAS
@@ -213,7 +213,7 @@
             <td>tRRD_S</td>
             <td><input type="number" id="tRRDs" value="7" /></td>
             <td>
-                RAS-to-RAS Delay (Short)<br>
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank group.<br>
                 Wait this many cycles before activating another row in a different bank group.
             </td>
@@ -222,7 +222,7 @@
             <td>tRRD_L</td>
             <td><input type="number" id="tRRDl" value="10" /></td>
             <td>
-                RAS-to-RAS Delay (Long)<br>
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
                 Wait this many cycles before activating another row in the same bank group.
             </td>
@@ -231,7 +231,7 @@
             <td>tFAW</td>
             <td><input type="number" id="tFAW" value="16" /></td>
             <td>
-                Four Activate Window Time<br>
+                <b>F</b>our <b>A</b>ctivate <b>W</b>indow Time<br>
                 At most 4 ACTIVATE commands can be sent to RAM in this many cycles.
             </td>
         </tr>
@@ -239,7 +239,7 @@
             <td>tWTR_S</td>
             <td><input type="number" id="tWTRs" value="5" /></td>
             <td>
-                Write To Read Time (Short)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank group.<br>
                 On Intel: not configurable, calculated as tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
@@ -250,7 +250,7 @@
             <td>tWTR_L</td>
             <td><input type="number" id="tWTRl" value="14" /></td>
             <td>
-                Write To Read Time (Long)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank in the same bank group.<br>
                 On Intel: not configurable, calculated as tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
@@ -261,7 +261,7 @@
             <td>tRdRd_sg</td>
             <td><input type="number" id="tRdRdSg" value="5" /></td>
             <td>
-                READ-to-READ Delay Long<br>
+                <b>R</b>ea<b>d</b>-to-<b>R</b>ea<b>d</b> Delay <b>s</b>ame <b>g</b>roup<br>
                 READ-to-READ command period to different bank in same bank group.<br>
                 Wait this many cycles before reading from another bank in the same bank group.<br>
                 On AMD: Related to tRdRdScL, check notes.
@@ -271,7 +271,7 @@
             <td>tRdRd_dg</td>
             <td><input type="number" id="tRdRdDg" value="4" /></td>
             <td>
-                READ-to-READ Delay Short<br>
+                <b>R</b>ea<b>d</b>-to-<b>R</b>ea<b>d</b> Delay <b>d</b>ifferent <b>g</b>roup<br>
                 READ-to-READ command period to different bank group.<br>
                 Wait this many cycles before reading from another bank group.<br>
                 On AMD: Related to tRdRdSc, check notes.
@@ -281,7 +281,7 @@
             <td>tWrWr_sg</td>
             <td><input type="number" id="tWrWrSg" value="5" /></td>
             <td>
-                WRITE-to-WRITE Delay Long<br>
+                <b>Wr</b>ite-to-<b>Wr</b>ite Delay <b>s</b>ame <b>g</b>roup<br>
                 WRITE-to-WRITE command period to different bank in same bank group.<br>
                 Wait this many cycles before writing to another bank in the same bank group.<br>
                 On AMD: Related to tWrWrScL, check notes.
@@ -291,7 +291,7 @@
             <td>tWrWr_dg</td>
             <td><input type="number" id="tWrWrDg" value="4" /></td>
             <td>
-                WRITE-to-WRITE Delay Short<br>
+                <b>Wr</b>ite-to-<b>Wr</b>ite Delay <b>d</b>ifferent <b>g</b>roup<br>
                 WRITE-to-WRITE command period to different bank group.<br>
                 Wait this many cycles before writing to another bank group.<br>
                 On AMD: Related to tWrWrSc, check notes.
@@ -301,7 +301,7 @@
             <td>tRdWr_sg</td>
             <td><input type="number" id="tRdWrSg" value="5" /></td>
             <td>
-                READ-to-WRITE Delay Long<br>
+                <b>R</b>ea<b>d</b>-to-<b>Wr</b>ite Delay <b>s</b>ame <b>g</b>roup<br>
                 READ-to-WRITE command period to different bank in same bank group.<br>
                 Wait this many cycles before reading from/writing to another bank in the same bank group.<br>
                 On AMD: check notes.
@@ -311,7 +311,7 @@
             <td>tRdWr_dg</td>
             <td><input type="number" id="tRdWrDg" value="4" /></td>
             <td>
-                READ-to-WRITE Delay Short<br>
+                <b>R</b>ea<b>d</b>-to-<b>Wr</b>ite Delay <b>d</b>ifferent <b>g</b>roup<br>
                 READ-to-WRITE command period to different bank group.<br>
                 Wait this many cycles before reading from/writing to another bank group.<br>
                 On AMD: check notes.
@@ -321,7 +321,7 @@
             <td>tREFI</td>
             <td><input type="number" id="tREFI" value="14062" /></td>
             <td>
-                REFresh Interval Time<br>
+                <b>REF</b>resh <b>I</b>nterval Time<br>
                 Average cycles between REFRESH commands.<br>
                 In 2x mode this is cut in half, in 4x mode it's a quarter.<br>
                 And when the memory stick is running hot (like 85C hot) it also gets cut in half.
@@ -331,7 +331,7 @@
             <td>tRFC</td>
             <td><input type="number" id="tRFC" value="642" /></td>
             <td>
-                ReFresh Cycle Time<br>
+                <b>R</b>e<b>F</b>resh <b>C</b>ycle Time<br>
                 A REFRESH command takes this many cycles to process in normal (1x) refresh mode.<br>
                 Spec requires 8 REFRESH commands in 8x tREFI.
             </td>
@@ -340,7 +340,7 @@
             <td>tRFC2</td>
             <td>-</td>
             <td>
-                ReFresh Cycle Time (in 2x Refresh Mode)<br>
+                <b>R</b>e<b>F</b>resh <b>C</b>ycle Time (in <b>2</b>x Refresh Mode)<br>
                 A REFRESH command takes this many cycles to process in 2x refresh mode.<br>
                 2x and 4x mode refreshes fewer rows per command and needs to issue REFRESH more frequently.<br>
                 This one is probably called "2x refresh" or "Fine Granularity Refresh" in BIOS.<br>
@@ -352,7 +352,7 @@
             <td>tRFC4</td>
             <td>-</td>
             <td>
-                ReFresh Cycle Time (in 4x Refresh Mode)<br>
+                <b>R</b>e<b>F</b>resh <b>C</b>ycle Time (in <b>4</b>x Refresh Mode)<br>
                 A REFRESH command takes this many cycles to process in 4x refresh mode.<br>
                 Might be unused, seems to have been deleted in DDR5.
             </td>
@@ -361,7 +361,7 @@
             <td>tCKE</td>
             <td>-</td>
             <td>
-                ClocK Enable Time<br>
+                <b>C</b>loc<b>K</b> <b>E</b>nable Time<br>
                 Minimum CKE signal pulse width<br>
                 CKE is used to put RAM into power save mode, if not using power save it's of no use.
             </td>
@@ -458,14 +458,28 @@
             So when the new DDR5 AMD platform comes along(I'm writing this in Aug. 2022) and manages lower tWTR timing
             by exactly 4, it might not be that Intel's IMC is crap but because utilities are displaying tWTR wrong.
         </p>
+        <p><b>Some rambling on Intel's tWR:</b></p>
+        <p>
+            Some people say is that tWR is controlled by tWRPDEN, which is partially true.<br>
+            TLDR: To set tWR on Intel, either set tWRPDEN = tWRPRE = tCWL + BL/2 + tWR, or set tWRPRE and disable power down.
+        </p>
+        <p>
+            tWRPDEN is <b>T</b>ime between <b>WR</b>ite command and <b>P</b>ower <b>D</b>own <b>EN</b>able, as it implies
+            this controls how soon can the RAM enter power down(pulling CKE low), not accept a PRECHARGE command, after
+            it has accepted a WRITE command. If only tWRPDEN is set and not tWRPRE, this would only tune tWR when there's
+            no more thing to do for the RAM and you have power down mode enabled. If power down is disabled setting tWRPDEN
+            does nothing.
+        </p>
         <p><b>In case you're browsing memory datasheet or reading SPD data:</b></p>
         <p>
-            All the t(RdRd/WrWr/RdWr)_sg timings are lumped into one timing: tCCD_L.<br>
-            All the t(RdRd/WrWr/RdWr)_dg timings are lumped into one timing: tCCD_S.<br>
+            All the t(RdRd/WrWr/RdWr)_sg timings are lumped into one timing: tCCD_L. (<b>C</b>AS-to-<b>C</b>AS <b>D</b>elay <b>L</b>ong)<br>
+            All the t(RdRd/WrWr/RdWr)_dg timings are lumped into one timing: tCCD_S. (<b>C</b>AS-to-<b>C</b>AS <b>D</b>elay <b>S</b>hort)<br>
             tCL becomes tAA.
         </p>
         <p><b>Where are the _dr and _dg timings?</b></p>
         <p>I do not want to add ranks/DIMMs, it's already complicated enough.</p>
+        <p><b>What are the RAS/CAS thing?</b></p>
+        <p>Commands are encoded onto the RAS/CAS/WE/AP signal lines(see cycle table). RAS/CAS refers to 2 of the lines.</p>
     </div>
 </div>
 <div id="controls">

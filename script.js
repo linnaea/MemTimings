@@ -188,7 +188,7 @@ var AddressMapConfig = /** @class */ (function () {
     return AddressMapConfig;
 }());
 var MemoryController = /** @class */ (function () {
-    function MemoryController(tCL, tCWL, tRCDrd, tRCDwr, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tRdWrSg, tRdWrDg, tRdRdSg, tRdRdDg, tWrWrSg, tWrWrDg, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
+    function MemoryController(tCL, tCWL, tRCDrd, tRCDwr, tRP, tRAS, tRC, tRRDs, tRRDl, tFAW, tWTRs, tWTRl, tWR, tRTP, tWRa, tRTPa, tRdWrSg, tRdWrDg, tRdRdSg, tRdRdDg, tWrWrSg, tWrWrDg, tREFI, tRFC, tCR, gdm, addrCfg, commandCycleMap) {
         var _a;
         var _b, _c, _d, _e, _f;
         this.tCL = tCL;
@@ -205,6 +205,8 @@ var MemoryController = /** @class */ (function () {
         this.tWTRl = tWTRl;
         this.tWR = tWR;
         this.tRTP = tRTP;
+        this.tWRa = tWRa;
+        this.tRTPa = tRTPa;
         this.tRdWrSg = tRdWrSg;
         this.tRdWrDg = tRdWrDg;
         this.tRdRdSg = tRdRdSg;
@@ -447,8 +449,8 @@ var MemoryController = /** @class */ (function () {
                 case BankStateEnum.Active:
                     if (bankState.WillPrecharge &&
                         !bankState.WriteTxs &&
-                        bankHistory.SinceRead + this.tCR > this.tRTP &&
-                        bankHistory.SinceWriteData + this.tCR > this.tWR &&
+                        bankHistory.SinceRead + this.tCR > this.tRTPa &&
+                        bankHistory.SinceWriteData + this.tCR > this.tWRa &&
                         bankHistory.SinceActivate + this.tCR > this.tRAS) {
                         bankState.State = BankStateEnum.Precharging;
                         bankState.CurrentOpenRow = null;
@@ -565,12 +567,15 @@ var MemoryController = /** @class */ (function () {
                 if (cmd.Command === MemCommandEnum.REF)
                     continue;
                 bankQueue.DequeueCommand();
-                var canAutoPrecharge = this.UseAutoPrecharge;
-                canAutoPrecharge && (canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE);
+                var canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
                 canAutoPrecharge && (canAutoPrecharge = ((_a = bankQueue.FirstCommand) === null || _a === void 0 ? void 0 : _a.Command) === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge);
                 if (cmd.Command === MemCommandEnum.READ) {
                     var tWTRa = this.tWR - this.tRTP;
                     canAutoPrecharge && (canAutoPrecharge = bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa);
+                    canAutoPrecharge && (canAutoPrecharge = this.tRTPa === this.tRTP);
+                }
+                if (cmd.Command === MemCommandEnum.WRITE) {
+                    canAutoPrecharge && (canAutoPrecharge = this.tWRa === this.tWR);
                 }
                 if (canAutoPrecharge) {
                     cmd.AutoPrecharge = true;
@@ -813,7 +818,7 @@ function loadState(state) {
                 var _c = addCmdRow(), ci = _c[0], rw = _c[1], ai = _c[2];
                 ci.value = (1 + cmd.Cycle).toString();
                 rw.checked = !!cmd.IsWrite;
-                ai.value = toHex((_b = cmd.Address) !== null && _b !== void 0 ? _b : 0, 8);
+                ai.value = toHex((_b = cmd.Address) !== null && _b !== void 0 ? _b : 0, 9);
             }
         }
     }
@@ -833,8 +838,49 @@ function createController() {
         commandCycleMap[MemCommandEnum.READ] = 2;
         commandCycleMap[MemCommandEnum.WRITE] = 2;
     }
+    var tWR = parseInt($x('tWR').value);
+    var tRTP = parseInt($x('tRTP').value);
+    var tWRa, tRTPa;
+    if (mcUseDdr5) {
+        commandCycleMap[MemCommandEnum.ACT] = 2;
+        commandCycleMap[MemCommandEnum.READ] = 2;
+        commandCycleMap[MemCommandEnum.WRITE] = 2;
+        if (tRTP <= 12) {
+            tRTPa = 12;
+        }
+        else if (tRTP >= 24) {
+            tRTPa = 24;
+        }
+        else {
+            tRTPa = Math.ceil(Math.ceil(tRTP / 1.5) * 1.5);
+        }
+        if (tWR <= 48) {
+            tWRa = 48;
+        }
+        else if (tWR >= 96) {
+            tWRa = 96;
+        }
+        else {
+            tWRa = Math.ceil(tWR / 6) * 6;
+        }
+    }
+    else {
+        if (tRTP <= 5) {
+            tRTPa = 5;
+        }
+        else if (tRTP >= 14) {
+            tRTPa = 14;
+        }
+        else {
+            tRTPa = tRTP;
+        }
+        tWRa = tRTPa * 2;
+    }
+    if (!$x('useAP').checked) {
+        tWRa = tRTPa = null;
+    }
     mcCommands = getImcCommands();
-    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCDrd').value), parseInt($x('tRCDwr').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), parseInt($x('tWR').value), parseInt($x('tRTP').value), parseInt($x('tRdWrSg').value), parseInt($x('tRdWrDg').value), parseInt($x('tRdRdSg').value), parseInt($x('tRdRdDg').value), parseInt($x('tWrWrSg').value), parseInt($x('tWrWrDg').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
+    mc = new MemoryController(parseInt($x('tCL').value), parseInt($x('tCWL').value), parseInt($x('tRCDrd').value), parseInt($x('tRCDwr').value), parseInt($x('tRP').value), parseInt($x('tRAS').value), parseInt($x('tRC').value), parseInt($x('tRRDs').value), parseInt($x('tRRDl').value), parseInt($x('tFAW').value), parseInt($x('tWTRs').value), parseInt($x('tWTRl').value), tWR, tRTP, tWRa, tRTPa, parseInt($x('tRdWrSg').value), parseInt($x('tRdWrDg').value), parseInt($x('tRdRdSg').value), parseInt($x('tRdRdDg').value), parseInt($x('tWrWrSg').value), parseInt($x('tWrWrDg').value), parseInt($x('tREFI').value), parseInt($x('tRFC').value), parseInt($x('tCR').value), $x('gearDown').checked, getAddrMapConfig(), commandCycleMap);
     memClock = parseInt($x('memTxSpeed').value);
     var mcString = (memClock * 3).toString();
     if (mcString.match(/98$/)) {
@@ -847,7 +893,6 @@ function createController() {
         memClock -= 1 / 3;
     }
     memClock /= 2;
-    mc.UseAutoPrecharge = !!$x('useAP').checked;
     return mc;
 }
 function getOrCreateController() {
@@ -1043,7 +1088,7 @@ function renderCycleRow() {
     if (mc.DqActive) {
         dq[0] = (mc.DqActive && mc.DqActive[0] === MemCommandEnum.READ) ? 'R' : 'W';
         // @ts-ignore
-        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 8);
+        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 9);
     }
     cell = document.createElement('td');
     cell.innerText = mc.DqActive ? dq.join(' ') : '';
