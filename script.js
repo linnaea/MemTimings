@@ -85,6 +85,11 @@ var CommandQueue = /** @class */ (function () {
         this.openRow = null;
         this.StartIssueCheck();
     }
+    Object.defineProperty(CommandQueue.prototype, "Pending", {
+        get: function () { return this.queue.length; },
+        enumerable: false,
+        configurable: true
+    });
     Object.defineProperty(CommandQueue.prototype, "Empty", {
         get: function () { return !this.queue.length; },
         enumerable: false,
@@ -154,6 +159,7 @@ var CommandHistory = /** @class */ (function () {
         this.SinceWriteData = 65535;
         this.SinceWrite = 65535;
         this.SinceRead = 65535;
+        this.SinceRefresh = -4;
     }
     CommandHistory.prototype.doCycle = function () {
         if (this.SinceRead < 65535)
@@ -164,6 +170,8 @@ var CommandHistory = /** @class */ (function () {
             this.SinceWriteData++;
         if (this.SinceActivate < 65535)
             this.SinceActivate++;
+        if (this.SinceRefresh < 1048575)
+            this.SinceRefresh++;
     };
     return CommandHistory;
 }());
@@ -230,7 +238,6 @@ var MemoryController = /** @class */ (function () {
             _a);
         this.currentCycle = 0;
         this.currentCommand = null;
-        this.sinceRefresh = 0;
         this.fawTracking = [];
         this.imcCommandQueue = [];
         this.dqsSchedule = [];
@@ -247,6 +254,7 @@ var MemoryController = /** @class */ (function () {
             this.BankHistory.push(new CommandHistory());
             this.BankState.push(new BankState());
         }
+        this.QueueBound = 12;
     }
     Object.defineProperty(MemoryController.prototype, "CommandRate", {
         get: function () { return this.tCR; },
@@ -333,14 +341,6 @@ var MemoryController = /** @class */ (function () {
         }
         return [true, totalCycles, delay];
     };
-    MemoryController.prototype.issuePrechargeAllBanks = function () {
-        var preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
-        preA.AutoPrecharge = true;
-        this.issueCommand(preA);
-    };
-    MemoryController.prototype.issueRefresh = function () {
-        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
-    };
     MemoryController.prototype.issueCommand = function (cmd) {
         var bankState = this.BankState[cmd.BankNum];
         var bankHistory = this.BankHistory[cmd.BankNum];
@@ -350,7 +350,7 @@ var MemoryController = /** @class */ (function () {
         this.currentCommand = cmd;
         switch (cmd.Command) {
             case MemCommandEnum.REF:
-                this.sinceRefresh -= this.tREFI;
+                this.RankHistory.SinceRefresh -= this.tREFI;
                 for (var i = 0; i < this.AddrCfg.Banks; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
                     this.BankState[i].StateCycles = 1 - commandCycles;
@@ -398,29 +398,7 @@ var MemoryController = /** @class */ (function () {
                 break;
         }
     };
-    MemoryController.prototype.DoCycle = function () {
-        var _a;
-        if (this.currentCommand) {
-            if (!this.currentCommand.NotLatched) {
-                this.currentCommand = null;
-            }
-            else {
-                this.currentCommand.NotLatched--;
-            }
-        }
-        this.currentCycle++;
-        this.sinceRefresh++;
-        this.RankHistory.doCycle();
-        this.GroupHistory.forEach(function (v) { return v.doCycle(); });
-        this.BankHistory.forEach(function (v) { return v.doCycle(); });
-        this.BankState.forEach(function (v) { return v.doCycle(); });
-        this.dqsSchedule.forEach(function (v) { return v.DueCycles--; });
-        for (var i = 0; i < this.fawTracking.length; i++) {
-            this.fawTracking[i]++;
-        }
-        if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
-            this.fawTracking.shift();
-        }
+    MemoryController.prototype.updateBankStates = function () {
         for (var i = 0; i < this.AddrCfg.Banks; i++) {
             var bankState = this.BankState[i];
             var bankHistory = this.BankHistory[i];
@@ -459,26 +437,34 @@ var MemoryController = /** @class */ (function () {
                     break;
             }
         }
-        if (this.sinceRefresh < 4 * this.tREFI) {
-            if (this.imcCommandQueue.length) {
-                var imcCommand = this.imcCommandQueue.shift();
-                var _b = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg), group = _b[0], bank = _b[1], row = _b[2], column = _b[3];
+    };
+    MemoryController.prototype.decodeOneCommandOrRefresh = function () {
+        if (this.RankHistory.SinceRefresh < 4 * this.tREFI) {
+            for (var i = 0; i < this.imcCommandQueue.length; i++) {
+                var imcCommand = this.imcCommandQueue[i];
+                var _a = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg), group = _a[0], bank = _a[1], row = _a[2], column = _a[3];
                 var bankNum = (group << this.AddrCfg.BA) | bank;
                 var bankQueue = this.BankCmdQueue[bankNum];
+                if (this.QueueBound && bankQueue.Pending >= this.QueueBound) {
+                    if (imcCommand.IsWrite)
+                        break;
+                    continue;
+                }
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
                         bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0));
                     bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row));
                 }
                 bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
-            }
-            else if (this.sinceRefresh >= (-4 * this.tREFI)) {
-                this.maybeEnqueueRefresh();
+                this.imcCommandQueue.splice(i, 1);
+                return;
             }
         }
-        else {
+        if (this.RankHistory.SinceRefresh >= (-4 * this.tREFI)) {
             this.maybeEnqueueRefresh();
         }
+    };
+    MemoryController.prototype.checkBankCommandQueue = function () {
         for (var i = 0; i < this.AddrCfg.Banks; i++) {
             var bankQueue = this.BankCmdQueue[i];
             var bankState = this.BankState[i];
@@ -540,50 +526,82 @@ var MemoryController = /** @class */ (function () {
                 }
             }
         }
-        var allBankCommand = false;
+    };
+    MemoryController.prototype.maybeIssueAllBankCommand = function () {
         if (this.BankCmdQueue.every(function (v) { return v.CanIssue; })) {
             if (this.BankCmdQueue.every(function (v) { return v.FirstCommand.Command === MemCommandEnum.PRE; })) {
-                this.issuePrechargeAllBanks();
-                allBankCommand = true;
+                this.BankCmdQueue.forEach(function (v) { return v.DequeueCommand(); });
+                var preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
+                preA.AutoPrecharge = true;
+                this.issueCommand(preA);
+                return true;
             }
             if (this.BankCmdQueue.every(function (v) { return v.FirstCommand.Command === MemCommandEnum.REF; })) {
-                this.issueRefresh();
-                allBankCommand = true;
-            }
-            if (allBankCommand) {
                 this.BankCmdQueue.forEach(function (v) { return v.DequeueCommand(); });
+                this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
+                return true;
             }
         }
-        if (!allBankCommand) {
-            for (var i = 0; i < this.AddrCfg.Banks; i++) {
-                var bankNum = ((i + (this.currentCycle >> this.AddrCfg.BA)) & ((1 << this.AddrCfg.BG) - 1)) << this.AddrCfg.BA;
-                var bankHistory = this.BankHistory[bankNum];
-                var bankQueue = this.BankCmdQueue[bankNum];
-                if (!bankQueue.CanIssue)
-                    continue;
-                var cmd = bankQueue.FirstCommand;
-                if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge)
-                    continue;
-                if (cmd.Command === MemCommandEnum.REF)
-                    continue;
-                bankQueue.DequeueCommand();
-                var canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
-                canAutoPrecharge && (canAutoPrecharge = ((_a = bankQueue.FirstCommand) === null || _a === void 0 ? void 0 : _a.Command) === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge);
-                if (cmd.Command === MemCommandEnum.READ) {
-                    var tWTRa = this.tWR - this.tRTP;
-                    canAutoPrecharge && (canAutoPrecharge = bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa);
-                    canAutoPrecharge && (canAutoPrecharge = this.tRTPa === this.tRTP);
-                }
-                if (cmd.Command === MemCommandEnum.WRITE) {
-                    canAutoPrecharge && (canAutoPrecharge = this.tWRa === this.tWR);
-                }
-                if (canAutoPrecharge) {
-                    cmd.AutoPrecharge = true;
-                    bankQueue.DequeueCommand();
-                }
-                this.issueCommand(cmd);
-                break;
+        return false;
+    };
+    MemoryController.prototype.issueOneCommand = function () {
+        var _a;
+        for (var i = 0; i < this.AddrCfg.Banks; i++) {
+            var bankNum = (i + (this.currentCycle >> 1)) & (this.AddrCfg.Banks - 1);
+            var bankHistory = this.BankHistory[bankNum];
+            var bankQueue = this.BankCmdQueue[bankNum];
+            if (!bankQueue.CanIssue)
+                continue;
+            var cmd = bankQueue.FirstCommand;
+            if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge)
+                continue;
+            if (cmd.Command === MemCommandEnum.REF)
+                continue;
+            bankQueue.DequeueCommand();
+            var canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
+            canAutoPrecharge && (canAutoPrecharge = ((_a = bankQueue.FirstCommand) === null || _a === void 0 ? void 0 : _a.Command) === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge);
+            if (cmd.Command === MemCommandEnum.READ) {
+                var tWTRa = this.tWR - this.tRTP;
+                canAutoPrecharge && (canAutoPrecharge = bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa);
+                canAutoPrecharge && (canAutoPrecharge = this.tRTPa === this.tRTP);
             }
+            if (cmd.Command === MemCommandEnum.WRITE) {
+                canAutoPrecharge && (canAutoPrecharge = this.tWRa === this.tWR);
+            }
+            if (canAutoPrecharge) {
+                cmd.AutoPrecharge = true;
+                bankQueue.DequeueCommand();
+            }
+            this.issueCommand(cmd);
+            break;
+        }
+    };
+    MemoryController.prototype.DoCycle = function () {
+        if (this.currentCommand) {
+            if (!this.currentCommand.NotLatched) {
+                this.currentCommand = null;
+            }
+            else {
+                this.currentCommand.NotLatched--;
+            }
+        }
+        this.currentCycle++;
+        this.RankHistory.doCycle();
+        this.GroupHistory.forEach(function (v) { return v.doCycle(); });
+        this.BankHistory.forEach(function (v) { return v.doCycle(); });
+        this.BankState.forEach(function (v) { return v.doCycle(); });
+        this.dqsSchedule.forEach(function (v) { return v.DueCycles--; });
+        for (var i = 0; i < this.fawTracking.length; i++) {
+            this.fawTracking[i]++;
+        }
+        if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
+            this.fawTracking.shift();
+        }
+        this.updateBankStates();
+        this.decodeOneCommandOrRefresh();
+        this.checkBankCommandQueue();
+        if (!this.maybeIssueAllBankCommand()) {
+            this.issueOneCommand();
         }
         this.dqActive = null;
         this.dqsActive = false;
@@ -893,6 +911,7 @@ function createController() {
         memClock -= 1 / 3;
     }
     memClock /= 2;
+    mc.QueueBound = 0;
     return mc;
 }
 function getOrCreateController() {
@@ -1130,7 +1149,11 @@ function createTableRow() {
         else if (cells[i] === undefined) {
         }
         else {
-            if (cells[i] instanceof HTMLElement) {
+            if (cells[i] instanceof HTMLTableCellElement) {
+                row.appendChild(cells[i]);
+                continue;
+            }
+            else if (cells[i] instanceof HTMLElement) {
                 cell.appendChild(cells[i]);
             }
             else {
@@ -1180,7 +1203,7 @@ function renderCommandQueue(cmds) {
     var container = document.createElement('div');
     for (var i = 0; i < cmds.length; i++) {
         var cmd = document.createElement('div');
-        if (i === 9 && cmds.length > 10) {
+        if (i === 11 && cmds.length > 12) {
             cmd.innerText = "... (+".concat(cmds.length - i, ")");
             container.appendChild(cmd);
             break;
@@ -1249,6 +1272,10 @@ function renderStateDumpRank(bgs) {
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['READ'], gatherHistory(function (v) { return v.SinceRead; }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['WRITE'], gatherHistory(function (v) { return v.SinceWrite; }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['WRITE Tx'], gatherHistory(function (v) { return v.SinceWriteData; }), false)));
+    var refreshCell = document.createElement('td');
+    refreshCell.innerText = mc.RankHistory.SinceRefresh.toString();
+    refreshCell.colSpan = bgs + 1;
+    tbody.appendChild(createTableRow('Refresh', refreshCell));
     container.appendChild(table);
     return container;
 }
@@ -1313,9 +1340,9 @@ $x('reset').onclick = function () {
     while (dumpRoot.hasChildNodes())
         dumpRoot.removeChild(dumpRoot.childNodes[0]);
 };
-loadState(JSON.parse(localStorage.getItem(stateKey)));
-$x('bgBits').dispatchEvent(new Event("change"));
 window.onunload = function () {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 };
+loadState(JSON.parse(localStorage.getItem(stateKey)));
+$x('bgBits').dispatchEvent(new Event("change"));
 //# sourceMappingURL=script.js.map

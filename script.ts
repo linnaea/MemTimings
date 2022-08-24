@@ -91,6 +91,7 @@ class CommandQueue {
 
     public IssueChecks: [boolean, string][];
     public CheckCmd: MemCommand;
+    get Pending(): number { return this.queue.length; }
     get Empty(): boolean { return !this.queue.length; }
     get OpenRow(): number { return this.openRow; }
     get FirstCommand(): MemCommand { return this.queue[0]; }
@@ -149,12 +150,14 @@ class CommandHistory {
     public SinceWrite: number;
     public SinceWriteData: number;
     public SinceActivate: number;
+    public SinceRefresh: number;
 
     public constructor() {
         this.SinceActivate = 65535;
         this.SinceWriteData = 65535;
         this.SinceWrite = 65535;
         this.SinceRead = 65535;
+        this.SinceRefresh = -4;
     }
 
     public doCycle() {
@@ -162,6 +165,7 @@ class CommandHistory {
         if (this.SinceWrite < 65535) this.SinceWrite++;
         if (this.SinceWriteData < 65535) this.SinceWriteData++;
         if (this.SinceActivate < 65535) this.SinceActivate++;
+        if (this.SinceRefresh < 1048575) this.SinceRefresh++;
     }
 }
 
@@ -228,6 +232,7 @@ class MemoryController {
     private readonly gearDown: boolean;
     private readonly commandCycleMap: Record<MemCommandEnum, number>;
     public readonly AddrCfg: AddressMapConfig;
+    public QueueBound: number;
 
     public readonly BankState: BankState[];
     public readonly BankHistory: CommandHistory[];
@@ -240,7 +245,6 @@ class MemoryController {
     private readonly fawTracking: number[];
 
     private currentCycle: number;
-    private sinceRefresh: number;
     private currentCommand: MemCommand;
     private dqsActive: boolean;
     private dqActive: [MemCommandEnum, number, number, number, number];
@@ -298,7 +302,6 @@ class MemoryController {
 
         this.currentCycle = 0;
         this.currentCommand = null;
-        this.sinceRefresh = 0;
         this.fawTracking = [];
         this.imcCommandQueue = [];
         this.dqsSchedule = [];
@@ -317,6 +320,8 @@ class MemoryController {
             this.BankHistory.push(new CommandHistory());
             this.BankState.push(new BankState());
         }
+
+        this.QueueBound = 12;
     }
 
     public EnqueueCommand(cmd: ImcCommand): void {
@@ -391,16 +396,6 @@ class MemoryController {
         return [true, totalCycles, delay];
     }
 
-    private issuePrechargeAllBanks() {
-        const preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
-        preA.AutoPrecharge = true;
-        this.issueCommand(preA);
-    }
-
-    private issueRefresh() {
-        this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
-    }
-
     private issueCommand(cmd: MemCommand) {
         const bankState = this.BankState[cmd.BankNum];
         const bankHistory = this.BankHistory[cmd.BankNum];
@@ -412,7 +407,7 @@ class MemoryController {
 
         switch (cmd.Command) {
             case MemCommandEnum.REF:
-                this.sinceRefresh -= this.tREFI;
+                this.RankHistory.SinceRefresh -= this.tREFI;
                 for (let i = 0; i < this.AddrCfg.Banks; i++) {
                     this.BankState[i].State = BankStateEnum.Refreshing;
                     this.BankState[i].StateCycles = 1 - commandCycles;
@@ -460,29 +455,7 @@ class MemoryController {
         }
     }
 
-    public DoCycle(): void {
-        if (this.currentCommand) {
-            if (!this.currentCommand.NotLatched) {
-                this.currentCommand = null;
-            } else {
-                this.currentCommand.NotLatched--;
-            }
-        }
-
-        this.currentCycle++;
-        this.sinceRefresh++;
-        this.RankHistory.doCycle();
-        this.GroupHistory.forEach(v => v.doCycle());
-        this.BankHistory.forEach(v => v.doCycle());
-        this.BankState.forEach(v => v.doCycle());
-        this.dqsSchedule.forEach(v => v.DueCycles--);
-        for (let i = 0; i < this.fawTracking.length; i++) {
-            this.fawTracking[i]++;
-        }
-        if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
-            this.fawTracking.shift();
-        }
-
+    private updateBankStates(): void {
         for (let i = 0; i < this.AddrCfg.Banks; i++) {
             const bankState = this.BankState[i];
             const bankHistory = this.BankHistory[i];
@@ -522,13 +495,22 @@ class MemoryController {
                     break;
             }
         }
+    }
 
-        if (this.sinceRefresh < 4 * this.tREFI) {
-            if (this.imcCommandQueue.length) {
-                const imcCommand = this.imcCommandQueue.shift();
+    private decodeOneCommandOrRefresh(): void {
+        if (this.RankHistory.SinceRefresh < 4 * this.tREFI) {
+            for (let i = 0; i < this.imcCommandQueue.length; i++) {
+                const imcCommand = this.imcCommandQueue[i];
                 const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg);
                 const bankNum = (group << this.AddrCfg.BA) | bank;
                 const bankQueue = this.BankCmdQueue[bankNum];
+
+                if (this.QueueBound && bankQueue.Pending >= this.QueueBound) {
+                    if (imcCommand.IsWrite)
+                        break;
+
+                    continue;
+                }
 
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
@@ -538,13 +520,17 @@ class MemoryController {
                 }
 
                 bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
-            } else if (this.sinceRefresh >= (-4 * this.tREFI)) {
-                this.maybeEnqueueRefresh();
+                this.imcCommandQueue.splice(i, 1);
+                return;
             }
-        } else {
-            this.maybeEnqueueRefresh();
         }
 
+        if (this.RankHistory.SinceRefresh >= (-4 * this.tREFI)) {
+            this.maybeEnqueueRefresh();
+        }
+    }
+
+    private checkBankCommandQueue(): void {
         for (let i = 0; i < this.AddrCfg.Banks; i++) {
             const bankQueue = this.BankCmdQueue[i];
             const bankState = this.BankState[i];
@@ -615,57 +601,91 @@ class MemoryController {
                 }
             }
         }
+    }
 
-        let allBankCommand = false;
+    private maybeIssueAllBankCommand(): boolean {
         if (this.BankCmdQueue.every(v => v.CanIssue)) {
             if (this.BankCmdQueue.every(v => v.FirstCommand.Command === MemCommandEnum.PRE)) {
-                this.issuePrechargeAllBanks();
-                allBankCommand = true;
+                this.BankCmdQueue.forEach(v => v.DequeueCommand());
+                const preA = new MemCommand(MemCommandEnum.PRE, 0, 0, 0, 0);
+                preA.AutoPrecharge = true;
+                this.issueCommand(preA);
+                return true;
             }
 
             if (this.BankCmdQueue.every(v => v.FirstCommand.Command === MemCommandEnum.REF)) {
-                this.issueRefresh();
-                allBankCommand = true;
-            }
-
-            if (allBankCommand) {
                 this.BankCmdQueue.forEach(v => v.DequeueCommand());
+                this.issueCommand(new MemCommand(MemCommandEnum.REF, 0, 0, 0, 0));
+                return true;
             }
         }
 
-        if (!allBankCommand) {
-            for (let i = 0; i < this.AddrCfg.Banks; i++) {
-                const bankNum = ((i + (this.currentCycle >> this.AddrCfg.BA)) & ((1 << this.AddrCfg.BG) - 1)) << this.AddrCfg.BA;
-                const bankHistory = this.BankHistory[bankNum];
-                const bankQueue = this.BankCmdQueue[bankNum];
-                if (!bankQueue.CanIssue) continue;
+        return false;
+    }
 
-                const cmd = bankQueue.FirstCommand;
-                if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge) continue;
-                if (cmd.Command === MemCommandEnum.REF) continue;
-                bankQueue.DequeueCommand();
+    private issueOneCommand(): void {
+        for (let i = 0; i < this.AddrCfg.Banks; i++) {
+            const bankNum = (i + (this.currentCycle >> 1)) & (this.AddrCfg.Banks - 1);
+            const bankHistory = this.BankHistory[bankNum];
+            const bankQueue = this.BankCmdQueue[bankNum];
+            if (!bankQueue.CanIssue) continue;
 
-                let canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
-                canAutoPrecharge &&= bankQueue.FirstCommand?.Command === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge;
+            const cmd = bankQueue.FirstCommand;
+            if (cmd.Command === MemCommandEnum.PRE && cmd.AutoPrecharge) continue;
+            if (cmd.Command === MemCommandEnum.REF) continue;
+            bankQueue.DequeueCommand();
 
-                if (cmd.Command === MemCommandEnum.READ) {
-                    const tWTRa = this.tWR - this.tRTP;
-                    canAutoPrecharge &&= bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa;
-                    canAutoPrecharge &&= this.tRTPa === this.tRTP;
-                }
+            let canAutoPrecharge = cmd.Command === MemCommandEnum.READ || cmd.Command === MemCommandEnum.WRITE;
+            canAutoPrecharge &&= bankQueue.FirstCommand?.Command === MemCommandEnum.PRE && !bankQueue.FirstCommand.AutoPrecharge;
 
-                if (cmd.Command === MemCommandEnum.WRITE) {
-                    canAutoPrecharge &&= this.tWRa === this.tWR;
-                }
-
-                if (canAutoPrecharge) {
-                    cmd.AutoPrecharge = true;
-                    bankQueue.DequeueCommand();
-                }
-
-                this.issueCommand(cmd);
-                break;
+            if (cmd.Command === MemCommandEnum.READ) {
+                const tWTRa = this.tWR - this.tRTP;
+                canAutoPrecharge &&= bankHistory.SinceWriteData + this.tCR * this.commandCycleMap[MemCommandEnum.READ] > tWTRa;
+                canAutoPrecharge &&= this.tRTPa === this.tRTP;
             }
+
+            if (cmd.Command === MemCommandEnum.WRITE) {
+                canAutoPrecharge &&= this.tWRa === this.tWR;
+            }
+
+            if (canAutoPrecharge) {
+                cmd.AutoPrecharge = true;
+                bankQueue.DequeueCommand();
+            }
+
+            this.issueCommand(cmd);
+            break;
+        }
+    }
+
+    public DoCycle(): void {
+        if (this.currentCommand) {
+            if (!this.currentCommand.NotLatched) {
+                this.currentCommand = null;
+            } else {
+                this.currentCommand.NotLatched--;
+            }
+        }
+
+        this.currentCycle++;
+        this.RankHistory.doCycle();
+        this.GroupHistory.forEach(v => v.doCycle());
+        this.BankHistory.forEach(v => v.doCycle());
+        this.BankState.forEach(v => v.doCycle());
+        this.dqsSchedule.forEach(v => v.DueCycles--);
+        for (let i = 0; i < this.fawTracking.length; i++) {
+            this.fawTracking[i]++;
+        }
+        if (this.fawTracking.length && this.fawTracking[0] >= this.tFAW) {
+            this.fawTracking.shift();
+        }
+
+        this.updateBankStates();
+        this.decodeOneCommandOrRefresh();
+        this.checkBankCommandQueue();
+
+        if (!this.maybeIssueAllBankCommand()) {
+            this.issueOneCommand();
         }
 
         this.dqActive = null;
@@ -1027,6 +1047,7 @@ function createController() {
     }
 
     memClock /= 2;
+    mc.QueueBound = 0;
     return mc;
 }
 
@@ -1260,7 +1281,10 @@ function createTableRow(...cells: (string | number | boolean | HTMLElement | {to
             cell.innerText = '-';
         } else if (cells[i] === undefined) {
         } else {
-            if (cells[i] instanceof HTMLElement) {
+            if (cells[i] instanceof HTMLTableCellElement) {
+                row.appendChild(<HTMLTableCellElement>cells[i]);
+                continue;
+            } else if (cells[i] instanceof HTMLElement) {
                 cell.appendChild(<HTMLElement>cells[i]);
             } else {
                 cell.innerText = cells[i]?.toString();
@@ -1317,7 +1341,7 @@ function renderCommandQueue(cmds: MemCommand[]) {
     const container = document.createElement('div');
     for (let i = 0; i < cmds.length; i++) {
         const cmd = document.createElement('div');
-        if (i === 9 && cmds.length > 10) {
+        if (i === 11 && cmds.length > 12) {
             cmd.innerText = `... (+${cmds.length - i})`;
             container.appendChild(cmd);
             break;
@@ -1433,6 +1457,13 @@ function renderStateDumpRank(bgs: number) {
         'WRITE Tx', ...gatherHistory(v => v.SinceWriteData)
     ));
 
+    const refreshCell = document.createElement('td');
+    refreshCell.innerText = mc.RankHistory.SinceRefresh.toString();
+    refreshCell.colSpan = bgs + 1;
+    tbody.appendChild(createTableRow(
+        'Refresh', refreshCell
+    ));
+
     container.appendChild(table);
     return container;
 }
@@ -1509,8 +1540,9 @@ $x('reset').onclick = function() {
         dumpRoot.removeChild(dumpRoot.childNodes[0]);
 }
 
-loadState(JSON.parse(localStorage.getItem(stateKey)));
-$x('bgBits').dispatchEvent(new Event("change"));
 window.onunload = function() {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 }
+
+loadState(JSON.parse(localStorage.getItem(stateKey)));
+$x('bgBits').dispatchEvent(new Event("change"));
