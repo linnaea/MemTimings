@@ -1642,12 +1642,15 @@ $x('reset').onclick = function() {
     dumpRoot.innerHTML = '';
 }
 
-window.onunload = function() {
+window.onunload = function () {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 }
 
-loadState(JSON.parse(localStorage.getItem(stateKey)));
-
-if (location.hash.length > 1) {
-    loadState(deserializeState(location.hash.slice(1)));
+window.onhashchange = function () {
+    if (location.hash.length > 1) {
+        loadState(deserializeState(location.hash.slice(1)));
+    }
 }
+
+loadState(JSON.parse(localStorage.getItem(stateKey)));
+window.onhashchange(null);

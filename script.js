@@ -1444,8 +1444,11 @@ $x('reset').onclick = function () {
 window.onunload = function () {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 };
+window.onhashchange = function () {
+    if (location.hash.length > 1) {
+        loadState(deserializeState(location.hash.slice(1)));
+    }
+};
 loadState(JSON.parse(localStorage.getItem(stateKey)));
-if (location.hash.length > 1) {
-    loadState(deserializeState(location.hash.slice(1)));
-}
+window.onhashchange(null);
 //# sourceMappingURL=script.js.map
