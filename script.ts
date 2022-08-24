@@ -903,6 +903,11 @@ function getImcCommands() {
     return imcCommands;
 }
 
+interface SaveState {
+    params?: {[key: string]: number | boolean},
+    commands?: ImcCommand[]
+}
+
 const stateKey = 'SAVE';
 const cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(v => v.tagName === "TBODY")[0];
 const allParams = [
@@ -942,14 +947,18 @@ const allParams = [
     'addrLock'
 ];
 
-function saveState() {
+function saveState(): SaveState {
     const timings = {};
     for (let i = 0; i < allParams.length; i++) {
         const ele = <HTMLInputElement>$x(allParams[i]);
-        let val: any = ele.value;
-        if (ele.type === "checkbox") val = ele.checked;
-        if (ele.type === "number") val = parseInt(ele.value);
-        timings[allParams[i]] = val;
+        let val: number | boolean;
+        switch (ele.type) {
+            case "checkbox": val = ele.checked; break;
+            case "number": val = parseInt(ele.value); break;
+        }
+
+        if (val !== undefined)
+            timings[allParams[i]] = val;
     }
 
     return {
@@ -958,10 +967,7 @@ function saveState() {
     };
 }
 
-function loadState(state?: {
-    params?: {string: number | string | boolean},
-    commands?: ImcCommand[]
-}) {
+function loadState(state?: SaveState) {
     if (state?.params) {
         for (let i = 0; i < allParams.length; i++) {
             let val: any = state?.params[allParams[i]];
@@ -1090,6 +1096,7 @@ function createController() {
 
     memClock /= 2;
     mc.QueueBound = 0;
+    history.replaceState(null, "", `#${encodeURI(serializeState(saveState()))}`);
     return mc;
 }
 
@@ -1557,6 +1564,59 @@ function doCycles(cycles: number) {
     cycleTableContainer.scrollTo({top: cycleTableContainer.scrollHeight});
 }
 
+function serializeState(state: SaveState) {
+    const commands = (state.commands ?? []).map(cmd => `${cmd.IsWrite ? 'W' : 'R'}${cmd.Address.toString(36)}:${cmd.Cycle.toString(36)}`);
+    for (const name in state.params) {
+        let value = '';
+        if (state.params[name] === true) {
+            value = (`T`);
+        } else if (state.params[name] === false) {
+            value = (`F`);
+        } else if (typeof state.params[name] === "number") {
+            value = (`N${state.params[name].toString(36)}`);
+        }
+
+        commands.push(`P${name}:${value}`);
+    }
+
+    return commands.join(',');
+}
+
+function deserializeState(state: string): SaveState {
+    const items = state.split(',');
+    const params = {};
+    const cmd = [];
+
+    while (items.length) {
+        const [tk0, tk1] = items.shift().split(':', 2);
+        switch (tk0[0]) {
+            case 'R':
+            case 'W':
+                const addr = parseInt(tk0.slice(1), 36);
+                const cycle = parseInt(tk1, 36);
+                cmd.push({IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr});
+                break;
+            case 'P':
+                let value;
+                switch (tk1[0]) {
+                    case 'T': value = true; break;
+                    case 'F': value = false; break;
+                    case 'N': value = parseInt(tk1.slice(1), 36); break;
+                }
+
+                if (value !== undefined)
+                    params[tk0.slice(1)] = value;
+
+                break;
+        }
+    }
+
+    return {
+        params: params,
+        commands: cmd
+    };
+}
+
 $x('go').onclick = function () {
     doCycles(parseInt((<HTMLInputElement>$x('cycles')).value));
 }
@@ -1587,4 +1647,8 @@ window.onunload = function() {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 }
 
-loadState(JSON.parse(localStorage.getItem(stateKey)));
+if (location.hash.length > 1) {
+    loadState(deserializeState(location.hash.slice(1)));
+} else {
+    loadState(JSON.parse(localStorage.getItem(stateKey)));
+}

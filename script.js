@@ -839,12 +839,17 @@ function saveState() {
     var timings = {};
     for (var i = 0; i < allParams.length; i++) {
         var ele = $x(allParams[i]);
-        var val = ele.value;
-        if (ele.type === "checkbox")
-            val = ele.checked;
-        if (ele.type === "number")
-            val = parseInt(ele.value);
-        timings[allParams[i]] = val;
+        var val = void 0;
+        switch (ele.type) {
+            case "checkbox":
+                val = ele.checked;
+                break;
+            case "number":
+                val = parseInt(ele.value);
+                break;
+        }
+        if (val !== undefined)
+            timings[allParams[i]] = val;
     }
     return {
         params: timings,
@@ -953,6 +958,7 @@ function createController() {
     }
     memClock /= 2;
     mc.QueueBound = 0;
+    history.replaceState(null, "", "#".concat(encodeURI(serializeState(saveState()))));
     return mc;
 }
 function getOrCreateController() {
@@ -1360,6 +1366,60 @@ function doCycles(cycles) {
         cycleTableContainer = cycleTableContainer.parentElement;
     cycleTableContainer.scrollTo({ top: cycleTableContainer.scrollHeight });
 }
+function serializeState(state) {
+    var _a;
+    var commands = ((_a = state.commands) !== null && _a !== void 0 ? _a : []).map(function (cmd) { return "".concat(cmd.IsWrite ? 'W' : 'R').concat(cmd.Address.toString(36), ":").concat(cmd.Cycle.toString(36)); });
+    for (var name_1 in state.params) {
+        var value = '';
+        if (state.params[name_1] === true) {
+            value = ("T");
+        }
+        else if (state.params[name_1] === false) {
+            value = ("F");
+        }
+        else if (typeof state.params[name_1] === "number") {
+            value = ("N".concat(state.params[name_1].toString(36)));
+        }
+        commands.push("P".concat(name_1, ":").concat(value));
+    }
+    return commands.join(',');
+}
+function deserializeState(state) {
+    var items = state.split(',');
+    var params = {};
+    var cmd = [];
+    while (items.length) {
+        var _a = items.shift().split(':', 2), tk0 = _a[0], tk1 = _a[1];
+        switch (tk0[0]) {
+            case 'R':
+            case 'W':
+                var addr = parseInt(tk0.slice(1), 36);
+                var cycle = parseInt(tk1, 36);
+                cmd.push({ IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr });
+                break;
+            case 'P':
+                var value = void 0;
+                switch (tk1[0]) {
+                    case 'T':
+                        value = true;
+                        break;
+                    case 'F':
+                        value = false;
+                        break;
+                    case 'N':
+                        value = parseInt(tk1.slice(1), 36);
+                        break;
+                }
+                if (value !== undefined)
+                    params[tk0.slice(1)] = value;
+                break;
+        }
+    }
+    return {
+        params: params,
+        commands: cmd
+    };
+}
 $x('go').onclick = function () {
     doCycles(parseInt($x('cycles').value));
 };
@@ -1385,5 +1445,10 @@ $x('reset').onclick = function () {
 window.onunload = function () {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 };
-loadState(JSON.parse(localStorage.getItem(stateKey)));
+if (location.hash.length > 1) {
+    loadState(deserializeState(location.hash.slice(1)));
+}
+else {
+    loadState(JSON.parse(localStorage.getItem(stateKey)));
+}
 //# sourceMappingURL=script.js.map
