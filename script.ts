@@ -7,21 +7,24 @@ enum MemCommandEnum {
 }
 
 interface ImcCommand {
+    Color?: string;
     Cycle?: number;
     IsWrite: boolean;
     Address: number;
 }
 
 class MemCommand {
-    public Command: MemCommandEnum;
-    public Bank: number;
-    public Group: number;
-    public BankNum: number;
-    public Address: number;
+    public readonly McCommand?: ImcCommand;
+    public readonly Command: MemCommandEnum;
+    public readonly Bank: number;
+    public readonly Group: number;
+    public readonly BankNum: number;
+    public readonly Address: number;
     public AutoPrecharge: boolean;
     public NotLatched: number;
 
-    public constructor(cmd: MemCommandEnum, bg: number, ba: number, bank: number, addr: number) {
+    public constructor(cmd: MemCommandEnum, bg: number, ba: number, bank: number, addr: number, imc?: ImcCommand) {
+        this.McCommand = imc;
         this.Command = cmd;
         this.Bank = ba;
         this.Group = bg;
@@ -298,13 +301,13 @@ class MemoryController {
     private currentCycle: number;
     private currentCommand: MemCommand;
     private dqsActive: boolean;
-    private dqActive: [MemCommandEnum, number, number, number, number];
+    private dqActive: [MemCommand, number, number];
 
     get CommandRate(): number { return this.tCR; }
     get CurrentCycle(): number { return this.currentCycle; }
     get CurrentCommand(): MemCommand { return this.currentCommand; }
     get DqsActive(): boolean { return this.dqsActive; }
-    get DqActive(): [MemCommandEnum, number, number, number, number] { return this.dqActive; }
+    get DqActive(): [MemCommand, number, number] { return this.dqActive; }
 
     public constructor(tCL: number, tCWL: number, tRCDrd: number, tRCDwr: number, tRP: number, tRAS: number, tRC: number,
                        tRRDs: number, tRRDl: number, tFAW: number, tWTRs: number, tWTRl: number,
@@ -565,12 +568,12 @@ class MemoryController {
 
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
-                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0));
+                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0, imcCommand));
 
-                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row));
+                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row, imcCommand));
                 }
 
-                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
+                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column, imcCommand));
                 this.imcCommandQueue.splice(i, 1);
                 return;
             }
@@ -676,7 +679,7 @@ class MemoryController {
 
     private issueOneCommand(): void {
         for (let i = 0; i < this.AddrCfg.Banks; i++) {
-            const bankNum = (i + (this.currentCycle >> 1)) & (this.AddrCfg.Banks - 1);
+            const bankNum = (i + (this.currentCycle >> this.AddrCfg.BL)) & (this.AddrCfg.Banks - 1);
             const bankHistory = this.BankHistory[bankNum];
             const bankQueue = this.BankCmdQueue[bankNum];
             if (!bankQueue.CanIssue) continue;
@@ -755,7 +758,7 @@ class MemoryController {
             }
 
             if (dqs.DueCycles <= 0) {
-                this.dqActive = [dqs.Command.Command, dqs.Command.Group, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
+                this.dqActive = [dqs.Command, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
                 this.dqsActive = true;
             } else {
                 this.dqsActive = dqs.Preamble >= dqs.DueCycles;
@@ -783,7 +786,7 @@ function getAddrMapConfig() {
     );
 }
 
-function addCmdRow() {
+function addCmdRow(): [HTMLInputElement, HTMLInputElement, HTMLInputElement, HTMLInputElement] {
     const row = document.createElement('tr');
 
     let cell = document.createElement('td');
@@ -804,11 +807,12 @@ function addCmdRow() {
     cell = document.createElement('td');
     const addrInput = document.createElement('input');
     addrInput.type = 'text';
-    addrInput.pattern = '[0-9a-fA-F]{1,8}';
+    addrInput.pattern = '[0-9a-fA-F]{1,9}';
+    addrInput.size = 9;
     cell.appendChild(addrInput);
     row.appendChild(cell);
 
-    const mapAddrCell = document.createElement('td');
+    cell = document.createElement('td');
     const bgInput = document.createElement('input');
     const baInput = document.createElement('input');
     const raInput = document.createElement('input');
@@ -821,14 +825,14 @@ function addCmdRow() {
     raInput.size = 5;
     caInput.size = 3;
 
-    mapAddrCell.appendChild(bgInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(baInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(raInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(caInput);
-    row.appendChild(mapAddrCell);
+    cell.appendChild(bgInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(baInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(raInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(caInput);
+    row.appendChild(cell);
 
     function updateMapAddr() {
         if ((<HTMLInputElement>$x('addrLock')).checked) {
@@ -866,6 +870,13 @@ function addCmdRow() {
     $x('caBits').addEventListener('change', updateMapAddr);
 
     cell = document.createElement('td');
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = '#ffffff';
+    cell.appendChild(colorInput);
+    row.appendChild(cell);
+
+    cell = document.createElement('td');
     const addButton = document.createElement('button');
     addButton.innerHTML = '+';
     addButton.onclick = addCmdRow;
@@ -881,7 +892,7 @@ function addCmdRow() {
     row.appendChild(cell);
 
     cmdTable.appendChild(row);
-    return [cycleInput, rwInput, addrInput];
+    return [cycleInput, rwInput, addrInput, colorInput];
 }
 
 function getImcCommands() {
@@ -892,7 +903,8 @@ function getImcCommands() {
             const cycle = cmdNodes[i].querySelector('input[type=number]').value - 1;
             const addr = parseInt(cmdNodes[i].querySelector('input[type=text]').value, 16);
             const isWr = cmdNodes[i].querySelector('input[type=checkbox]').checked;
-            imcCommands.push({Cycle: cycle, Address: addr, IsWrite: isWr});
+            const color = cmdNodes[i].querySelector('input[type=color]').value;
+            imcCommands.push({Cycle: cycle, Address: addr, IsWrite: isWr, Color: color});
         } else {
             cmdTable.removeChild(cmdNodes[i]);
             i--;
@@ -990,14 +1002,15 @@ function loadState(state?: SaveState) {
         for (let i = 0; i < state.commands.length; i++) {
             const cmd = state.commands[i];
             if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
-                const [ci, rw, ai] = addCmdRow();
+                const [ci, rw, ai, co] = addCmdRow();
                 ci.value = (1 + cmd.Cycle).toString();
                 rw.checked = !!cmd.IsWrite;
                 ai.value = toHex(cmd.Address ?? 0, 9);
+                co.value = cmd.Color;
                 ai.dispatchEvent(new Event("keyup"));
             }
         }
-    } else if (!cmdTable.firstChild) {
+    } else if (!cmdTable.childElementCount) {
         addCmdRow();
     }
 
@@ -1105,10 +1118,24 @@ function getOrCreateController() {
     return mc ??= createController();
 }
 
+function isColorDark(hexColor: string) {
+    if (hexColor?.length !== 7 || hexColor[0] !== '#')
+        return;
+
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    const luma = Math.sqrt(0.2126 * r * r + 0.7152 * g * g + 0.0722 * b * b);
+
+    return luma < 144;
+}
+
 function renderCycleRow() {
     const row = document.createElement('tr');
     let cell = document.createElement('td');
     cell.innerText = (1000 * mc.CurrentCycle / memClock).toFixed(1);
+    cell.style.backgroundColor = mc.CurrentCommand?.McCommand?.Color;
+    cell.style.color = isColorDark(mc.CurrentCommand?.McCommand?.Color) ? '#fff' : '#000';
     row.appendChild(cell);
 
     cell = document.createElement('td');
@@ -1281,20 +1308,26 @@ function renderCycleRow() {
     }
 
     cell = document.createElement('td');
+    const dqa = mc.DqActive;
     cell.innerText = mc.DqsActive ? `⭜⭝` : '';
     if (mc.DqsActive) {
-        cell.className = mc.DqActive ? 'active' : 'latching';
+        if (dqa) {
+            cell.className = 'active';
+            cell.style.backgroundColor = dqa[0].McCommand?.Color;
+            cell.style.color = isColorDark(dqa[0].McCommand?.Color) ? '#fff' : '#000';
+        } else {
+            cell.className = 'latching';
+        }
     } else {
         cell.className = 'inactive';
     }
     row.appendChild(cell);
 
     let dq: string[] = ['', '', ''];
-    const dqa = mc.DqActive;
     if (dqa) {
-        dq[0] = (dqa[0] === MemCommandEnum.READ) ? 'R' : 'W';
-        dq[1] = toHex(mc.AddrCfg.MapMemArray([dqa[1], dqa[2], dqa[3], dqa[4]]), 9);
-        dq[2] = `${toHex(dqa[1], 1)}/${toHex(dqa[2], 1)}/${toHex(dqa[3], 5)}/${toHex(dqa[4], 3)}`;
+        dq[0] = (dqa[0].Command === MemCommandEnum.READ) ? 'R' : 'W';
+        dq[1] = toHex(mc.AddrCfg.MapMemArray([dqa[0].Group, dqa[0].Bank, dqa[1], dqa[2]]), 9);
+        dq[2] = `${toHex(dqa[0].Group, 1)}/${toHex(dqa[0].Bank, 1)}/${toHex(dqa[1], 5)}/${toHex(dqa[2], 3)}`;
     }
     cell = document.createElement('td');
     cell.innerText = dqa ? dq.join(' ') : '';
@@ -1565,7 +1598,7 @@ function doCycles(cycles: number) {
 }
 
 function serializeState(state: SaveState) {
-    const commands = (state.commands ?? []).map(cmd => `${cmd.IsWrite ? 'W' : 'R'}${cmd.Address.toString(36)}:${cmd.Cycle.toString(36)}`);
+    const commands = (state.commands ?? []).map(cmd => `${cmd.IsWrite ? 'W' : 'R'}${cmd.Address.toString(36)}:${cmd.Color.slice(1)}${cmd.Cycle.toString(36)}`);
     for (const name in state.params) {
         let value = '';
         if (state.params[name] === true) {
@@ -1593,8 +1626,8 @@ function deserializeState(state: string): SaveState {
             case 'R':
             case 'W':
                 const addr = parseInt(tk0.slice(1), 36);
-                const cycle = parseInt(tk1, 36);
-                cmd.push({IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr});
+                const cycle = parseInt(tk1.slice(6), 36);
+                cmd.push({IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr, Color: '#' + tk1.slice(0, 6)});
                 break;
             case 'P':
                 let value;

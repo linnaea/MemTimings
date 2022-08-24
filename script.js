@@ -24,7 +24,8 @@ var MemCommandEnum;
     MemCommandEnum[MemCommandEnum["WRITE"] = 4] = "WRITE";
 })(MemCommandEnum || (MemCommandEnum = {}));
 var MemCommand = /** @class */ (function () {
-    function MemCommand(cmd, bg, ba, bank, addr) {
+    function MemCommand(cmd, bg, ba, bank, addr, imc) {
+        this.McCommand = imc;
         this.Command = cmd;
         this.Bank = ba;
         this.Group = bg;
@@ -499,10 +500,10 @@ var MemoryController = /** @class */ (function () {
                 }
                 if (bankQueue.OpenRow !== row) {
                     if (bankQueue.OpenRow !== null)
-                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0));
-                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row));
+                        bankQueue.QueueCommand(new MemCommand(MemCommandEnum.PRE, group, bank, bankNum, 0, imcCommand));
+                    bankQueue.QueueCommand(new MemCommand(MemCommandEnum.ACT, group, bank, bankNum, row, imcCommand));
                 }
-                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column));
+                bankQueue.QueueCommand(new MemCommand(imcCommand.IsWrite ? MemCommandEnum.WRITE : MemCommandEnum.READ, group, bank, bankNum, column, imcCommand));
                 this.imcCommandQueue.splice(i, 1);
                 return;
             }
@@ -594,7 +595,7 @@ var MemoryController = /** @class */ (function () {
     MemoryController.prototype.issueOneCommand = function () {
         var _a;
         for (var i = 0; i < this.AddrCfg.Banks; i++) {
-            var bankNum = (i + (this.currentCycle >> 1)) & (this.AddrCfg.Banks - 1);
+            var bankNum = (i + (this.currentCycle >> this.AddrCfg.BL)) & (this.AddrCfg.Banks - 1);
             var bankHistory = this.BankHistory[bankNum];
             var bankQueue = this.BankCmdQueue[bankNum];
             if (!bankQueue.CanIssue)
@@ -664,7 +665,7 @@ var MemoryController = /** @class */ (function () {
                 }
             }
             if (dqs.DueCycles <= 0) {
-                this.dqActive = [dqs.Command.Command, dqs.Command.Group, dqs.Command.Bank, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
+                this.dqActive = [dqs.Command, dqs.RowNumber, dqs.Command.Address - dqs.DueCycles * 2];
                 this.dqsActive = true;
             }
             else {
@@ -706,10 +707,11 @@ function addCmdRow() {
     cell = document.createElement('td');
     var addrInput = document.createElement('input');
     addrInput.type = 'text';
-    addrInput.pattern = '[0-9a-fA-F]{1,8}';
+    addrInput.pattern = '[0-9a-fA-F]{1,9}';
+    addrInput.size = 9;
     cell.appendChild(addrInput);
     row.appendChild(cell);
-    var mapAddrCell = document.createElement('td');
+    cell = document.createElement('td');
     var bgInput = document.createElement('input');
     var baInput = document.createElement('input');
     var raInput = document.createElement('input');
@@ -721,14 +723,14 @@ function addCmdRow() {
     bgInput.size = baInput.size = 1;
     raInput.size = 5;
     caInput.size = 3;
-    mapAddrCell.appendChild(bgInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(baInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(raInput);
-    mapAddrCell.appendChild(document.createTextNode('/'));
-    mapAddrCell.appendChild(caInput);
-    row.appendChild(mapAddrCell);
+    cell.appendChild(bgInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(baInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(raInput);
+    cell.appendChild(document.createTextNode('/'));
+    cell.appendChild(caInput);
+    row.appendChild(cell);
     function updateMapAddr() {
         if ($x('addrLock').checked) {
             var addr = parseInt(addrInput.value, 16);
@@ -763,6 +765,12 @@ function addCmdRow() {
     $x('baBits').addEventListener('change', updateMapAddr);
     $x('caBits').addEventListener('change', updateMapAddr);
     cell = document.createElement('td');
+    var colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = '#ffffff';
+    cell.appendChild(colorInput);
+    row.appendChild(cell);
+    cell = document.createElement('td');
     var addButton = document.createElement('button');
     addButton.innerHTML = '+';
     addButton.onclick = addCmdRow;
@@ -777,7 +785,7 @@ function addCmdRow() {
     cell.appendChild(delButton);
     row.appendChild(cell);
     cmdTable.appendChild(row);
-    return [cycleInput, rwInput, addrInput];
+    return [cycleInput, rwInput, addrInput, colorInput];
 }
 function getImcCommands() {
     var imcCommands = [];
@@ -787,7 +795,8 @@ function getImcCommands() {
             var cycle = cmdNodes[i].querySelector('input[type=number]').value - 1;
             var addr = parseInt(cmdNodes[i].querySelector('input[type=text]').value, 16);
             var isWr = cmdNodes[i].querySelector('input[type=checkbox]').checked;
-            imcCommands.push({ Cycle: cycle, Address: addr, IsWrite: isWr });
+            var color = cmdNodes[i].querySelector('input[type=color]').value;
+            imcCommands.push({ Cycle: cycle, Address: addr, IsWrite: isWr, Color: color });
         }
         else {
             cmdTable.removeChild(cmdNodes[i]);
@@ -878,15 +887,16 @@ function loadState(state) {
         for (var i = 0; i < state.commands.length; i++) {
             var cmd = state.commands[i];
             if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
-                var _c = addCmdRow(), ci = _c[0], rw = _c[1], ai = _c[2];
+                var _c = addCmdRow(), ci = _c[0], rw = _c[1], ai = _c[2], co = _c[3];
                 ci.value = (1 + cmd.Cycle).toString();
                 rw.checked = !!cmd.IsWrite;
                 ai.value = toHex((_b = cmd.Address) !== null && _b !== void 0 ? _b : 0, 9);
+                co.value = cmd.Color;
                 ai.dispatchEvent(new Event("keyup"));
             }
         }
     }
-    else if (!cmdTable.firstChild) {
+    else if (!cmdTable.childElementCount) {
         addCmdRow();
     }
     addrLock.checked = saveAddrState;
@@ -965,10 +975,22 @@ function createController() {
 function getOrCreateController() {
     return mc !== null && mc !== void 0 ? mc : (mc = createController());
 }
+function isColorDark(hexColor) {
+    if ((hexColor === null || hexColor === void 0 ? void 0 : hexColor.length) !== 7 || hexColor[0] !== '#')
+        return;
+    var r = parseInt(hexColor.slice(1, 3), 16);
+    var g = parseInt(hexColor.slice(3, 5), 16);
+    var b = parseInt(hexColor.slice(5, 7), 16);
+    var luma = Math.sqrt(0.2126 * r * r + 0.7152 * g * g + 0.0722 * b * b);
+    return luma < 144;
+}
 function renderCycleRow() {
+    var _a, _b, _c, _d, _e, _f;
     var row = document.createElement('tr');
     var cell = document.createElement('td');
     cell.innerText = (1000 * mc.CurrentCycle / memClock).toFixed(1);
+    cell.style.backgroundColor = (_b = (_a = mc.CurrentCommand) === null || _a === void 0 ? void 0 : _a.McCommand) === null || _b === void 0 ? void 0 : _b.Color;
+    cell.style.color = isColorDark((_d = (_c = mc.CurrentCommand) === null || _c === void 0 ? void 0 : _c.McCommand) === null || _d === void 0 ? void 0 : _d.Color) ? '#fff' : '#000';
     row.appendChild(cell);
     cell = document.createElement('td');
     cell.innerText = mc.CurrentCycle.toString();
@@ -1143,20 +1165,27 @@ function renderCycleRow() {
         row.appendChild(cell);
     }
     cell = document.createElement('td');
+    var dqa = mc.DqActive;
     cell.innerText = mc.DqsActive ? "\u2B5C\u2B5D" : '';
     if (mc.DqsActive) {
-        cell.className = mc.DqActive ? 'active' : 'latching';
+        if (dqa) {
+            cell.className = 'active';
+            cell.style.backgroundColor = (_e = dqa[0].McCommand) === null || _e === void 0 ? void 0 : _e.Color;
+            cell.style.color = isColorDark((_f = dqa[0].McCommand) === null || _f === void 0 ? void 0 : _f.Color) ? '#fff' : '#000';
+        }
+        else {
+            cell.className = 'latching';
+        }
     }
     else {
         cell.className = 'inactive';
     }
     row.appendChild(cell);
     var dq = ['', '', ''];
-    var dqa = mc.DqActive;
     if (dqa) {
-        dq[0] = (dqa[0] === MemCommandEnum.READ) ? 'R' : 'W';
-        dq[1] = toHex(mc.AddrCfg.MapMemArray([dqa[1], dqa[2], dqa[3], dqa[4]]), 9);
-        dq[2] = "".concat(toHex(dqa[1], 1), "/").concat(toHex(dqa[2], 1), "/").concat(toHex(dqa[3], 5), "/").concat(toHex(dqa[4], 3));
+        dq[0] = (dqa[0].Command === MemCommandEnum.READ) ? 'R' : 'W';
+        dq[1] = toHex(mc.AddrCfg.MapMemArray([dqa[0].Group, dqa[0].Bank, dqa[1], dqa[2]]), 9);
+        dq[2] = "".concat(toHex(dqa[0].Group, 1), "/").concat(toHex(dqa[0].Bank, 1), "/").concat(toHex(dqa[1], 5), "/").concat(toHex(dqa[2], 3));
     }
     cell = document.createElement('td');
     cell.innerText = dqa ? dq.join(' ') : '';
@@ -1368,7 +1397,7 @@ function doCycles(cycles) {
 }
 function serializeState(state) {
     var _a;
-    var commands = ((_a = state.commands) !== null && _a !== void 0 ? _a : []).map(function (cmd) { return "".concat(cmd.IsWrite ? 'W' : 'R').concat(cmd.Address.toString(36), ":").concat(cmd.Cycle.toString(36)); });
+    var commands = ((_a = state.commands) !== null && _a !== void 0 ? _a : []).map(function (cmd) { return "".concat(cmd.IsWrite ? 'W' : 'R').concat(cmd.Address.toString(36), ":").concat(cmd.Color.slice(1)).concat(cmd.Cycle.toString(36)); });
     for (var name_1 in state.params) {
         var value = '';
         if (state.params[name_1] === true) {
@@ -1394,8 +1423,8 @@ function deserializeState(state) {
             case 'R':
             case 'W':
                 var addr = parseInt(tk0.slice(1), 36);
-                var cycle = parseInt(tk1, 36);
-                cmd.push({ IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr });
+                var cycle = parseInt(tk1.slice(6), 36);
+                cmd.push({ IsWrite: tk0[0] === 'W', Cycle: cycle, Address: addr, Color: '#' + tk1.slice(0, 6) });
                 break;
             case 'P':
                 var value = void 0;
