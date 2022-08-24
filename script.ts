@@ -986,6 +986,7 @@ function loadState(state?: SaveState) {
     const saveAddrState = addrLock.checked;
     addrLock.checked = true;
     if (state?.commands?.length) {
+        cmdTable.innerHTML = '';
         for (let i = 0; i < state.commands.length; i++) {
             const cmd = state.commands[i];
             if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
@@ -996,7 +997,7 @@ function loadState(state?: SaveState) {
                 ai.dispatchEvent(new Event("keyup"));
             }
         }
-    } else {
+    } else if (!cmdTable.firstChild) {
         addCmdRow();
     }
 
@@ -1520,8 +1521,7 @@ function renderStateDumpRank(bgs: number) {
 
 function renderStateDump() {
     const dumpRoot = $x('stateDump');
-    while (dumpRoot.hasChildNodes())
-        dumpRoot.removeChild(dumpRoot.childNodes[0]);
+    dumpRoot.innerHTML = '';
 
     const mc = getOrCreateController();
     const bgs = 1 << mc.AddrCfg.BG;
@@ -1639,16 +1639,15 @@ $x('reset').onclick = function() {
 
     cycleTable.appendChild(tableBody);
     const dumpRoot = $x('stateDump');
-    while (dumpRoot.hasChildNodes())
-        dumpRoot.removeChild(dumpRoot.childNodes[0]);
+    dumpRoot.innerHTML = '';
 }
 
 window.onunload = function() {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 }
 
+loadState(JSON.parse(localStorage.getItem(stateKey)));
+
 if (location.hash.length > 1) {
     loadState(deserializeState(location.hash.slice(1)));
-} else {
-    loadState(JSON.parse(localStorage.getItem(stateKey)));
 }

@@ -874,6 +874,7 @@ function loadState(state) {
     var saveAddrState = addrLock.checked;
     addrLock.checked = true;
     if ((_a = state === null || state === void 0 ? void 0 : state.commands) === null || _a === void 0 ? void 0 : _a.length) {
+        cmdTable.innerHTML = '';
         for (var i = 0; i < state.commands.length; i++) {
             var cmd = state.commands[i];
             if (cmd && cmd.Cycle !== undefined && cmd.Address !== undefined && cmd.IsWrite !== undefined) {
@@ -885,7 +886,7 @@ function loadState(state) {
             }
         }
     }
-    else {
+    else if (!cmdTable.firstChild) {
         addCmdRow();
     }
     addrLock.checked = saveAddrState;
@@ -1329,8 +1330,7 @@ function renderStateDumpRank(bgs) {
 }
 function renderStateDump() {
     var dumpRoot = $x('stateDump');
-    while (dumpRoot.hasChildNodes())
-        dumpRoot.removeChild(dumpRoot.childNodes[0]);
+    dumpRoot.innerHTML = '';
     var mc = getOrCreateController();
     var bgs = 1 << mc.AddrCfg.BG;
     for (var i = 0; i < bgs; i++) {
@@ -1439,16 +1439,13 @@ $x('reset').onclick = function () {
     }
     cycleTable.appendChild(tableBody);
     var dumpRoot = $x('stateDump');
-    while (dumpRoot.hasChildNodes())
-        dumpRoot.removeChild(dumpRoot.childNodes[0]);
+    dumpRoot.innerHTML = '';
 };
 window.onunload = function () {
     localStorage.setItem(stateKey, JSON.stringify(saveState()));
 };
+loadState(JSON.parse(localStorage.getItem(stateKey)));
 if (location.hash.length > 1) {
     loadState(deserializeState(location.hash.slice(1)));
-}
-else {
-    loadState(JSON.parse(localStorage.getItem(stateKey)));
 }
 //# sourceMappingURL=script.js.map
