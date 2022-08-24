@@ -199,6 +199,57 @@ class AddressMapConfig {
         this.Groups = 1 << bg;
         this.Banks = this.Groups * (1 << ba);
     }
+
+    public MapAddress(addr: number) : [number, number, number, number] {
+        let bgBits = this.BG;
+        addr >>>= this.BL;
+        let group = 0;
+        if (bgBits) {
+            group = addr & 1;
+            bgBits--;
+            addr >>>= 1;
+        }
+        const column = (addr & ((1 << (this.CA - this.BL)) - 1)) << this.BL;
+        addr >>>= this.CA - this.BL;
+        if (bgBits) {
+            group |= (addr & 1) << 1;
+            bgBits--;
+            addr >>>= 1;
+        }
+        const bank = addr & ((1 << this.BA) - 1);
+        addr >>>= this.BA;
+        if (bgBits) {
+            group |= (addr & ((1 << bgBits) - 1)) << 2;
+            addr >>>= bgBits;
+        }
+        const row = addr;
+
+        return [group, bank, row, column];
+    }
+
+    public MapMemArray(mem: [number, number, number, number]) : number {
+        let addr = mem[2];
+        if (this.BG > 2) {
+            addr <<= this.BG - 2;
+            addr |= mem[0] >>> 2;
+        }
+        addr <<= this.BA;
+        addr |= mem[1];
+        if (this.BG > 1) {
+            addr <<= 1;
+            addr |= (mem[0] >>> 1) & 1;
+        }
+        addr <<= this.CA - this.BL;
+        addr |= mem[3] >>> this.BL;
+        if (this.BG > 0) {
+            addr <<= 1;
+            addr |= mem[0] & 1;
+        }
+
+        addr <<= this.BL;
+        addr |= mem[3] & ((1 << this.BL) - 1);
+        return addr;
+    }
 }
 
 class MemoryController {
@@ -501,7 +552,7 @@ class MemoryController {
         if (this.RankHistory.SinceRefresh < 4 * this.tREFI) {
             for (let i = 0; i < this.imcCommandQueue.length; i++) {
                 const imcCommand = this.imcCommandQueue[i];
-                const [group, bank, row, column] = MemoryController.MapAddress(imcCommand.Address, this.AddrCfg);
+                const [group, bank, row, column] = this.AddrCfg.MapAddress(imcCommand.Address);
                 const bankNum = (group << this.AddrCfg.BA) | bank;
                 const bankQueue = this.BankCmdQueue[bankNum];
 
@@ -711,57 +762,6 @@ class MemoryController {
             }
         }
     }
-
-    public static MapAddress(addr: number, addrCfg: AddressMapConfig) : [number, number, number, number] {
-        let bgBits = addrCfg.BG;
-        addr >>>= addrCfg.BL;
-        let group = 0;
-        if (bgBits) {
-            group = addr & 1;
-            bgBits--;
-            addr >>>= 1;
-        }
-        const column = (addr & ((1 << (addrCfg.CA - addrCfg.BL)) - 1)) << addrCfg.BL;
-        addr >>>= addrCfg.CA - addrCfg.BL;
-        if (bgBits) {
-            group |= (addr & 1) << 1;
-            bgBits--;
-            addr >>>= 1;
-        }
-        const bank = addr & ((1 << addrCfg.BA) - 1);
-        addr >>>= addrCfg.BA;
-        if (bgBits) {
-            group |= (addr & ((1 << bgBits) - 1)) << 2;
-            addr >>>= bgBits;
-        }
-        const row = addr;
-
-        return [group, bank, row, column];
-    }
-
-    public MapMemArray(mem: [number, number, number, number]) : number {
-        let addr = mem[2];
-        if (this.AddrCfg.BG > 2) {
-            addr <<= this.AddrCfg.BG - 2;
-            addr |= mem[0] >>> 2;
-        }
-        addr <<= this.AddrCfg.BA;
-        addr |= mem[1];
-        if (this.AddrCfg.BG > 1) {
-            addr <<= 1;
-            addr |= (mem[0] >>> 1) & 1;
-        }
-        addr <<= this.AddrCfg.CA - this.AddrCfg.BL;
-        addr |= mem[3] >>> this.AddrCfg.BL;
-        if (this.AddrCfg.BG > 0) {
-            addr <<= 1;
-            addr |= mem[0] & 1;
-        }
-
-        addr <<= this.AddrCfg.BL;
-        addr |= mem[3] & ((1 << this.AddrCfg.BL) - 1);
-        return addr;
-    }
 }
 
 function $x(e) { return document.getElementById(e); }
@@ -797,7 +797,7 @@ function addCmdRow() {
     cell = document.createElement('td');
     const rwInput = document.createElement('input');
     rwInput.type = 'checkbox';
-    rwInput.className = 'rwCheckBox';
+    rwInput.className = 'linkCheckBox rwCheckBox';
     cell.appendChild(rwInput);
     row.appendChild(cell);
 
@@ -809,12 +809,43 @@ function addCmdRow() {
     row.appendChild(cell);
 
     const mapAddrCell = document.createElement('td');
+    const bgInput = document.createElement('input');
+    const baInput = document.createElement('input');
+    const raInput = document.createElement('input');
+    const caInput = document.createElement('input');
+    bgInput.type = baInput.type = raInput.type = caInput.type = 'text';
+    raInput.pattern = '[0-9a-fA-F]{1,5}';
+    caInput.pattern = '[0-9a-fA-F]{1,3}';
+    bgInput.pattern = baInput.pattern = '[0-9a-fA-F]';
+    bgInput.size = baInput.size = 1;
+    raInput.size = 5;
+    caInput.size = 3;
+
+    mapAddrCell.appendChild(bgInput);
+    mapAddrCell.appendChild(document.createTextNode('/'));
+    mapAddrCell.appendChild(baInput);
+    mapAddrCell.appendChild(document.createTextNode('/'));
+    mapAddrCell.appendChild(raInput);
+    mapAddrCell.appendChild(document.createTextNode('/'));
+    mapAddrCell.appendChild(caInput);
     row.appendChild(mapAddrCell);
 
     function updateMapAddr() {
-        const addr = parseInt(addrInput.value, 16);
-        const [bankGroup, bank, aRow, col] = MemoryController.MapAddress(addr, getAddrMapConfig());
-        mapAddrCell.innerText = `${bankGroup}/${bank}/${toHex(aRow, 5)}/${toHex(col, 3)}`;
+        if ((<HTMLInputElement>$x('addrLock')).checked) {
+            const addr = parseInt(addrInput.value, 16);
+            const addrCfg = getAddrMapConfig();
+            const [bankGroup, bank, aRow, col] = addrCfg.MapAddress(addr);
+            bgInput.value = toHex(bankGroup, 1);
+            baInput.value = toHex(bank, 1);
+            raInput.value = toHex(aRow, 5);
+            caInput.value = toHex(col, 3);
+        } else {
+            const bankGroup = parseInt(bgInput.value, 16);
+            const bank = parseInt(baInput.value, 16);
+            const aRow = parseInt(raInput.value, 16);
+            const col = parseInt(caInput.value, 16);
+            addrInput.value = toHex(getAddrMapConfig().MapMemArray([bankGroup, bank, aRow, col]), 9);
+        }
 
         if (!row.isConnected) {
             $x('blBits').removeEventListener('change', updateMapAddr);
@@ -824,7 +855,11 @@ function addCmdRow() {
         }
     }
 
-    addrInput.onkeyup = updateMapAddr;
+    addrInput.addEventListener('keyup', updateMapAddr);
+    bgInput.addEventListener('keyup', updateMapAddr);
+    baInput.addEventListener('keyup', updateMapAddr);
+    raInput.addEventListener('keyup', updateMapAddr);
+    caInput.addEventListener('keyup', updateMapAddr);
     $x('blBits').addEventListener('change', updateMapAddr);
     $x('bgBits').addEventListener('change', updateMapAddr);
     $x('baBits').addEventListener('change', updateMapAddr);
@@ -903,7 +938,8 @@ const allParams = [
     'cycles',
     'allCycles',
     'useAP',
-    'collapseNotes'
+    'collapseNotes',
+    'addrLock'
 ];
 
 function saveState() {
@@ -940,6 +976,9 @@ function loadState(state?: {
         }
     }
 
+    const addrLock = (<HTMLInputElement>$x('addrLock'));
+    const saveAddrState = addrLock.checked;
+    addrLock.checked = true;
     if (state?.commands?.length) {
         for (let i = 0; i < state.commands.length; i++) {
             const cmd = state.commands[i];
@@ -948,11 +987,14 @@ function loadState(state?: {
                 ci.value = (1 + cmd.Cycle).toString();
                 rw.checked = !!cmd.IsWrite;
                 ai.value = toHex(cmd.Address ?? 0, 9);
+                ai.dispatchEvent(new Event("keyup"));
             }
         }
     } else {
         addCmdRow();
     }
+
+    addrLock.checked = saveAddrState;
 }
 
 let mc: MemoryController;
@@ -1239,15 +1281,16 @@ function renderCycleRow() {
     }
     row.appendChild(cell);
 
-    let dq: string[] = ['', ''];
-    if (mc.DqActive) {
-        dq[0] = (mc.DqActive && mc.DqActive[0] === MemCommandEnum.READ) ? 'R' : 'W';
-        // @ts-ignore
-        dq[1] = toHex(mc.MapMemArray(mc.DqActive.slice(1)), 9);
+    let dq: string[] = ['', '', ''];
+    const dqa = mc.DqActive;
+    if (dqa) {
+        dq[0] = (dqa[0] === MemCommandEnum.READ) ? 'R' : 'W';
+        dq[1] = toHex(mc.AddrCfg.MapMemArray([dqa[1], dqa[2], dqa[3], dqa[4]]), 9);
+        dq[2] = `${toHex(dqa[1], 1)}/${toHex(dqa[2], 1)}/${toHex(dqa[3], 5)}/${toHex(dqa[4], 3)}`;
     }
     cell = document.createElement('td');
-    cell.innerText = mc.DqActive ? dq.join(' ') : '';
-    cell.className = mc.DqActive ? 'active' : 'inactive';
+    cell.innerText = dqa ? dq.join(' ') : '';
+    cell.className = dqa ? 'active' : 'inactive';
     row.appendChild(cell);
 
     return row;
@@ -1545,4 +1588,3 @@ window.onunload = function() {
 }
 
 loadState(JSON.parse(localStorage.getItem(stateKey)));
-$x('bgBits').dispatchEvent(new Event("change"));

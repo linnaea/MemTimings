@@ -39,13 +39,23 @@
             text-align: right !important;
         }
 
-        input.rwCheckBox {
+        input.linkCheckBox {
             appearance: none;
             text-decoration: underline;
             cursor: pointer;
-            width: 100%;
             margin: 0;
             padding: 0;
+        }
+
+        input#addrLock::after {
+            content: "Group/Bank/Row/Column";
+        }
+        input#addrLock:checked::after {
+            content: "Address";
+        }
+
+        input.rwCheckBox {
+            width: 100%;
             text-align: center;
             display: block;
         }
@@ -492,6 +502,7 @@
     <br>
     Address maps as RA:BG[:2]:BA:BG1:CA[:BL]:BG0:CA[BL-1:0]
     <br>
+    Input with <input id="addrLock" type="checkbox" class="linkCheckBox" />
 </div>
 
 <div class="contentBox">
