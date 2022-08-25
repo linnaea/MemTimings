@@ -1168,12 +1168,20 @@ function isColorDark(hexColor: string) {
     return luma < 128;
 }
 
+function setBgColor(ele: HTMLElement, color: string) {
+    if (color) {
+        ele.style.backgroundColor = color;
+        ele.style.color = isColorDark(color) ? '#fff' : '#000';
+    }
+
+    return ele;
+}
+
 function renderCycleRow() {
     const row = document.createElement('tr');
     let cell = document.createElement('td');
     cell.innerText = (1000 * mc.CurrentCycle / memClock).toFixed(1);
-    cell.style.backgroundColor = mc.CurrentCommand?.McCommand?.Color;
-    cell.style.color = isColorDark(mc.CurrentCommand?.McCommand?.Color) ? '#fff' : '#000';
+    setBgColor(cell, mc.CurrentCommand?.McCommand?.Color);
     row.appendChild(cell);
 
     cell = document.createElement('td');
@@ -1351,8 +1359,7 @@ function renderCycleRow() {
     if (mc.DqsActive) {
         if (dqa) {
             cell.className = 'active';
-            cell.style.backgroundColor = dqa[0].McCommand?.Color;
-            cell.style.color = isColorDark(dqa[0].McCommand?.Color) ? '#fff' : '#000';
+            setBgColor(cell, dqa[0].McCommand?.Color);
         } else {
             cell.className = 'latching';
         }
@@ -1470,6 +1477,7 @@ function renderCommandQueue(cmds: MemCommand[]) {
         }
 
         cmd.innerText = cmds[i].toString();
+        setBgColor(cmd, cmds[i].McCommand?.Color);
         container.appendChild(cmd);
     }
 
@@ -1528,7 +1536,12 @@ function renderStateDumpBankGroup(bg: number) {
         'Last WRITE Tx', ...gatherData((mc, bg) => mc.BankHistory[bg].SinceWriteData),
     ));
     tbody.appendChild(createTableRow(
-        'Next Command', ...gatherData((mc, bg) => mc.BankCmdQueue[bg].CheckCmd),
+        'Next Command', ...gatherData(function (mc, bg) {
+            const cell = document.createElement('td');
+            cell.innerText = mc.BankCmdQueue[bg].CheckCmd?.toString();
+            setBgColor(cell, mc.BankCmdQueue[bg].CheckCmd?.McCommand?.Color);
+            return cell;
+        }),
     ));
     tbody.appendChild(createTableRow(
         'Issue Check', ...gatherData((mc, bg) => renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks)),

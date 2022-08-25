@@ -1027,13 +1027,19 @@ function isColorDark(hexColor) {
     var luma = Math.sqrt(0.299 * r * r + 0.587 * g * g + 0.114 * b * b);
     return luma < 128;
 }
+function setBgColor(ele, color) {
+    if (color) {
+        ele.style.backgroundColor = color;
+        ele.style.color = isColorDark(color) ? '#fff' : '#000';
+    }
+    return ele;
+}
 function renderCycleRow() {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c;
     var row = document.createElement('tr');
     var cell = document.createElement('td');
     cell.innerText = (1000 * mc.CurrentCycle / memClock).toFixed(1);
-    cell.style.backgroundColor = (_b = (_a = mc.CurrentCommand) === null || _a === void 0 ? void 0 : _a.McCommand) === null || _b === void 0 ? void 0 : _b.Color;
-    cell.style.color = isColorDark((_d = (_c = mc.CurrentCommand) === null || _c === void 0 ? void 0 : _c.McCommand) === null || _d === void 0 ? void 0 : _d.Color) ? '#fff' : '#000';
+    setBgColor(cell, (_b = (_a = mc.CurrentCommand) === null || _a === void 0 ? void 0 : _a.McCommand) === null || _b === void 0 ? void 0 : _b.Color);
     row.appendChild(cell);
     cell = document.createElement('td');
     cell.innerText = mc.CurrentCycle.toString();
@@ -1213,8 +1219,7 @@ function renderCycleRow() {
     if (mc.DqsActive) {
         if (dqa) {
             cell.className = 'active';
-            cell.style.backgroundColor = (_e = dqa[0].McCommand) === null || _e === void 0 ? void 0 : _e.Color;
-            cell.style.color = isColorDark((_f = dqa[0].McCommand) === null || _f === void 0 ? void 0 : _f.Color) ? '#fff' : '#000';
+            setBgColor(cell, (_c = dqa[0].McCommand) === null || _c === void 0 ? void 0 : _c.Color);
         }
         else {
             cell.className = 'latching';
@@ -1318,6 +1323,7 @@ function renderIssueCheck(checks) {
     return container;
 }
 function renderCommandQueue(cmds) {
+    var _a;
     if (!cmds) {
         return undefined;
     }
@@ -1330,6 +1336,7 @@ function renderCommandQueue(cmds) {
             break;
         }
         cmd.innerText = cmds[i].toString();
+        setBgColor(cmd, (_a = cmds[i].McCommand) === null || _a === void 0 ? void 0 : _a.Color);
         container.appendChild(cmd);
     }
     return container;
@@ -1363,7 +1370,13 @@ function renderStateDumpBankGroup(bg) {
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last READ'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceRead; }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last WRITE'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceWrite; }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Last WRITE Tx'], gatherData(function (mc, bg) { return mc.BankHistory[bg].SinceWriteData; }), false)));
-    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Next Command'], gatherData(function (mc, bg) { return mc.BankCmdQueue[bg].CheckCmd; }), false)));
+    tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Next Command'], gatherData(function (mc, bg) {
+        var _a, _b, _c;
+        var cell = document.createElement('td');
+        cell.innerText = (_a = mc.BankCmdQueue[bg].CheckCmd) === null || _a === void 0 ? void 0 : _a.toString();
+        setBgColor(cell, (_c = (_b = mc.BankCmdQueue[bg].CheckCmd) === null || _b === void 0 ? void 0 : _b.McCommand) === null || _c === void 0 ? void 0 : _c.Color);
+        return cell;
+    }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Issue Check'], gatherData(function (mc, bg) { return renderIssueCheck(mc.BankCmdQueue[bg].CheckCmd && mc.BankCmdQueue[bg].IssueChecks); }), false)));
     tbody.appendChild(createTableRow.apply(void 0, __spreadArray(['Command Queue'], gatherData(function (mc, bg) { return renderCommandQueue(mc.BankCmdQueue[bg].AllCommand); }), false)));
     container.appendChild(table);
