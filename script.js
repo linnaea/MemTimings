@@ -1,3 +1,18 @@
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = function (d, b) {
+        extendStatics = Object.setPrototypeOf ||
+            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+        return extendStatics(d, b);
+    };
+    return function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
         if (ar || !(i in from)) {
@@ -133,9 +148,11 @@ var CommandQueue = /** @class */ (function () {
         this.canIssue = !this.Empty;
         this.IssueChecks = [];
     };
-    CommandQueue.prototype.IssueCheck = function (pass, desc) {
+    CommandQueue.prototype.IssueCheck = function (pass, desc, ignore) {
+        if (ignore === void 0) { ignore = false; }
         this.IssueChecks.push([pass, desc]);
-        this.canIssue = pass && this.canIssue;
+        this.canIssue = (ignore || pass) && this.canIssue;
+        return pass;
     };
     CommandQueue.prototype.StateCheck = function (desc, currentState) {
         var allowedStates = [];
@@ -152,6 +169,13 @@ var CommandQueue = /** @class */ (function () {
         var commandCycles = this.tCR * this.commandCycleMap[this.CheckCmd.Command];
         this.IssueCheck((toCheck + commandCycles) > target, "".concat(desc, ": ").concat(toCheck, " + ").concat(commandCycles, "(tCR) > ").concat(target, "(").concat(name, ")"));
     };
+    CommandQueue.prototype.DgTimingCheck = function (lastGroup, thisGroup, command, toCheck, target, name, desc) {
+        this.IssueCheck(true, "Last ".concat(command, " bank group: ").concat(lastGroup));
+        if (lastGroup !== thisGroup) {
+            this.IssueChecks[this.IssueChecks.length - 1][1] += " != ".concat(thisGroup, ", check ").concat(name);
+            this.TimingCheck(toCheck, target, name, desc);
+        }
+    };
     return CommandQueue;
 }());
 var CommandHistory = /** @class */ (function () {
@@ -160,7 +184,6 @@ var CommandHistory = /** @class */ (function () {
         this.SinceWriteData = 65535;
         this.SinceWrite = 65535;
         this.SinceRead = 65535;
-        this.SinceRefresh = -4;
     }
     CommandHistory.prototype.doCycle = function () {
         if (this.SinceRead < 65535)
@@ -171,11 +194,27 @@ var CommandHistory = /** @class */ (function () {
             this.SinceWriteData++;
         if (this.SinceActivate < 65535)
             this.SinceActivate++;
-        if (this.SinceRefresh < 1048575)
-            this.SinceRefresh++;
     };
     return CommandHistory;
 }());
+var RankHistory = /** @class */ (function (_super) {
+    __extends(RankHistory, _super);
+    function RankHistory() {
+        var _this = _super.call(this) || this;
+        _this.SinceRefresh = -4;
+        _this.LastActivateGroup = -1;
+        _this.LastReadGroup = -1;
+        _this.LastWriteGroup = -1;
+        _this.LastWriteTxGroup = -1;
+        return _this;
+    }
+    RankHistory.prototype.doCycle = function () {
+        _super.prototype.doCycle.call(this);
+        if (this.SinceRefresh < 1048575)
+            this.SinceRefresh++;
+    };
+    return RankHistory;
+}(CommandHistory));
 var DqsSchedule = /** @class */ (function () {
     function DqsSchedule(cycles, row, cmd, pre) {
         this.DueCycles = cycles;
@@ -192,7 +231,7 @@ var AddressMapConfig = /** @class */ (function () {
         this.CA = ca;
         this.BL = bl;
         this.Groups = 1 << bg;
-        this.Banks = this.Groups * (1 << ba);
+        this.Banks = 1 << (bg + ba);
     }
     AddressMapConfig.prototype.MapAddress = function (addr) {
         var bgBits = this.BG;
@@ -289,7 +328,7 @@ var MemoryController = /** @class */ (function () {
         this.fawTracking = [];
         this.imcCommandQueue = [];
         this.dqsSchedule = [];
-        this.RankHistory = new CommandHistory();
+        this.RankHistory = new RankHistory();
         this.GroupHistory = [];
         for (var i = 0; i < addrCfg.Groups; i++) {
             this.GroupHistory.push(new CommandHistory());
@@ -427,6 +466,7 @@ var MemoryController = /** @class */ (function () {
                 bankHistory.SinceActivate = 1 - commandCycles;
                 groupHistory.SinceActivate = 1 - commandCycles;
                 this.RankHistory.SinceActivate = 1 - commandCycles;
+                this.RankHistory.LastActivateGroup = cmd.Group;
                 this.fawTracking.push(0);
                 break;
             case MemCommandEnum.READ:
@@ -434,6 +474,7 @@ var MemoryController = /** @class */ (function () {
                 bankHistory.SinceRead = 1 - commandCycles;
                 groupHistory.SinceRead = 1 - commandCycles;
                 this.RankHistory.SinceRead = 1 - commandCycles;
+                this.RankHistory.LastReadGroup = cmd.Group;
                 this.scheduleDqs(cmd, false);
                 break;
             case MemCommandEnum.WRITE:
@@ -442,6 +483,7 @@ var MemoryController = /** @class */ (function () {
                 bankHistory.SinceWrite = 1 - commandCycles;
                 groupHistory.SinceWrite = 1 - commandCycles;
                 this.RankHistory.SinceWrite = 1 - commandCycles;
+                this.RankHistory.LastWriteGroup = cmd.Group;
                 this.scheduleDqs(cmd, false);
                 break;
         }
@@ -529,10 +571,10 @@ var MemoryController = /** @class */ (function () {
                 switch (cmd.Command) {
                     case MemCommandEnum.ACT:
                         bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
+                        bankQueue.IssueCheck(this.fawTracking.length < 4, "ACTs in rank in tFAW: [".concat(this.fawTracking.join(', '), "]"));
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
                         bankQueue.TimingCheck(groupHistory.SinceActivate, this.tRRDl, "tRRD_L", "Since ACT in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
-                        bankQueue.IssueCheck(this.fawTracking.length < 4, "ACTs in rank in tFAW: [".concat(this.fawTracking.join(', '), "]"));
+                        bankQueue.DgTimingCheck(this.RankHistory.LastActivateGroup, cmd.Group, "ACT", this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
                         break;
                     case MemCommandEnum.REF:
                         bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
@@ -556,8 +598,8 @@ var MemoryController = /** @class */ (function () {
                         bankQueue.IssueCheck(!bankState.WriteTxs, "In-flight WRITEs: ".concat(bankState.WriteTxs));
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdRdSg, "tRdRd_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastReadGroup, cmd.Group, "READ", this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg", "Since READ in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastWriteTxGroup, cmd.Group, "WRITE Tx", this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
                         break;
@@ -566,8 +608,8 @@ var MemoryController = /** @class */ (function () {
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRCDwr, "tRCDwr", "Since bank ACT");
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdWrSg, "tRdWr_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWrite, this.tWrWrSg, "tWrWr_sg", "Since WRITE in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg", "Since WRITE in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastReadGroup, cmd.Group, "READ", this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastWriteGroup, cmd.Group, "WRITE", this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg", "Since WRITE in rank");
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], "DQS available for ".concat(dqsSchedule[1], " cycles after ").concat(dqsSchedule[2], " cycles"));
                         break;
@@ -662,6 +704,7 @@ var MemoryController = /** @class */ (function () {
                     this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
                     this.GroupHistory[dqs.Command.Group].SinceWriteData = -1;
                     this.RankHistory.SinceWriteData = -1;
+                    this.RankHistory.LastWriteTxGroup = dqs.Command.Group;
                 }
             }
             if (dqs.DueCycles <= 0) {

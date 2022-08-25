@@ -128,9 +128,10 @@ class CommandQueue {
         this.IssueChecks = [];
     }
 
-    public IssueCheck(pass: boolean, desc: string) {
+    public IssueCheck(pass: boolean, desc: string, ignore: boolean = false) {
         this.IssueChecks.push([pass, desc]);
-        this.canIssue = pass && this.canIssue;
+        this.canIssue = (ignore || pass) && this.canIssue;
+        return pass;
     }
 
     public StateCheck(desc: string, currentState: BankStateEnum, ...allowedStates: BankStateEnum[]) {
@@ -146,6 +147,14 @@ class CommandQueue {
         let commandCycles = this.tCR * this.commandCycleMap[this.CheckCmd.Command];
         this.IssueCheck((toCheck + commandCycles) > target, `${desc}: ${toCheck} + ${commandCycles}(tCR) > ${target}(${name})`);
     }
+
+    public DgTimingCheck(lastGroup: number, thisGroup: number, command: string, toCheck, target, name, desc) {
+        this.IssueCheck(true, `Last ${command} bank group: ${lastGroup}`);
+        if (lastGroup !== thisGroup) {
+            this.IssueChecks[this.IssueChecks.length - 1][1] += ` != ${thisGroup}, check ${name}`;
+            this.TimingCheck(toCheck, target, name, desc);
+        }
+    }
 }
 
 class CommandHistory {
@@ -153,14 +162,12 @@ class CommandHistory {
     public SinceWrite: number;
     public SinceWriteData: number;
     public SinceActivate: number;
-    public SinceRefresh: number;
 
     public constructor() {
         this.SinceActivate = 65535;
         this.SinceWriteData = 65535;
         this.SinceWrite = 65535;
         this.SinceRead = 65535;
-        this.SinceRefresh = -4;
     }
 
     public doCycle() {
@@ -168,6 +175,27 @@ class CommandHistory {
         if (this.SinceWrite < 65535) this.SinceWrite++;
         if (this.SinceWriteData < 65535) this.SinceWriteData++;
         if (this.SinceActivate < 65535) this.SinceActivate++;
+    }
+}
+
+class RankHistory extends CommandHistory {
+    public SinceRefresh: number;
+    public LastActivateGroup: number;
+    public LastReadGroup: number;
+    public LastWriteGroup: number;
+    public LastWriteTxGroup: number;
+
+    public constructor() {
+        super();
+        this.SinceRefresh = -4;
+        this.LastActivateGroup = -1;
+        this.LastReadGroup = -1;
+        this.LastWriteGroup = -1;
+        this.LastWriteTxGroup = -1;
+    }
+
+    public doCycle() {
+        super.doCycle();
         if (this.SinceRefresh < 1048575) this.SinceRefresh++;
     }
 }
@@ -200,7 +228,7 @@ class AddressMapConfig {
         this.CA = ca;
         this.BL = bl;
         this.Groups = 1 << bg;
-        this.Banks = this.Groups * (1 << ba);
+        this.Banks = 1 << (bg + ba);
     }
 
     public MapAddress(addr: number) : [number, number, number, number] {
@@ -291,7 +319,7 @@ class MemoryController {
     public readonly BankState: BankState[];
     public readonly BankHistory: CommandHistory[];
     public readonly GroupHistory: CommandHistory[];
-    public readonly RankHistory: CommandHistory;
+    public readonly RankHistory: RankHistory;
     public readonly BankCmdQueue: CommandQueue[];
 
     private readonly imcCommandQueue: ImcCommand[];
@@ -359,7 +387,7 @@ class MemoryController {
         this.fawTracking = [];
         this.imcCommandQueue = [];
         this.dqsSchedule = [];
-        this.RankHistory = new CommandHistory();
+        this.RankHistory = new RankHistory();
 
         this.GroupHistory = [];
         for (let i = 0; i < addrCfg.Groups; i++) {
@@ -489,6 +517,7 @@ class MemoryController {
                 bankHistory.SinceActivate = 1 - commandCycles;
                 groupHistory.SinceActivate = 1 - commandCycles;
                 this.RankHistory.SinceActivate = 1 - commandCycles;
+                this.RankHistory.LastActivateGroup = cmd.Group;
                 this.fawTracking.push(0);
                 break;
             case MemCommandEnum.READ:
@@ -496,6 +525,7 @@ class MemoryController {
                 bankHistory.SinceRead = 1 - commandCycles;
                 groupHistory.SinceRead = 1 - commandCycles;
                 this.RankHistory.SinceRead = 1 - commandCycles;
+                this.RankHistory.LastReadGroup = cmd.Group;
                 this.scheduleDqs(cmd, false);
                 break;
             case MemCommandEnum.WRITE:
@@ -504,6 +534,7 @@ class MemoryController {
                 bankHistory.SinceWrite = 1 - commandCycles;
                 groupHistory.SinceWrite = 1 - commandCycles;
                 this.RankHistory.SinceWrite = 1 - commandCycles;
+                this.RankHistory.LastWriteGroup = cmd.Group;
                 this.scheduleDqs(cmd, false);
                 break;
         }
@@ -603,10 +634,12 @@ class MemoryController {
                 switch(cmd.Command) {
                     case MemCommandEnum.ACT:
                         bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
+                        bankQueue.IssueCheck(this.fawTracking.length < 4, `ACTs in rank in tFAW: [${this.fawTracking.join(', ')}]`);
                         bankQueue.TimingCheck(bankHistory.SinceActivate, this.tRC, "tRC", "Since ACT in bank");
                         bankQueue.TimingCheck(groupHistory.SinceActivate, this.tRRDl, "tRRD_L", "Since ACT in group");
-                        bankQueue.TimingCheck(this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
-                        bankQueue.IssueCheck(this.fawTracking.length < 4, `ACTs in rank in tFAW: [${this.fawTracking.join(', ')}]`);
+                        bankQueue.DgTimingCheck(this.RankHistory.LastActivateGroup, cmd.Group, "ACT",
+                            this.RankHistory.SinceActivate, this.tRRDs, "tRRD_S", "Since ACT in rank");
+
                         break;
                     case MemCommandEnum.REF:
                         bankQueue.StateCheck("Bank idle", bankState.State, BankStateEnum.Idle);
@@ -633,8 +666,10 @@ class MemoryController {
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdRdSg, "tRdRd_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWriteData, this.tWTRl, "tWTR_L", "Since WRITE Tx in group");
 
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastReadGroup, cmd.Group, "READ",
+                            this.RankHistory.SinceRead, this.tRdRdDg, "tRdRd_dg", "Since READ in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastWriteTxGroup, cmd.Group, "WRITE Tx",
+                            this.RankHistory.SinceWriteData, this.tWTRs, "tWTR_S", "Since WRITE Tx in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], `DQS available for ${dqsSchedule[1]} cycles after ${dqsSchedule[2]} cycles`);
@@ -646,8 +681,10 @@ class MemoryController {
                         bankQueue.TimingCheck(groupHistory.SinceRead, this.tRdWrSg, "tRdWr_sg", "Since READ in group");
                         bankQueue.TimingCheck(groupHistory.SinceWrite, this.tWrWrSg, "tWrWr_sg", "Since WRITE in group");
 
-                        bankQueue.TimingCheck(this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
-                        bankQueue.TimingCheck(this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg", "Since WRITE in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastReadGroup, cmd.Group, "READ",
+                            this.RankHistory.SinceRead, this.tRdWrDg, "tRdWr_dg", "Since READ in rank");
+                        bankQueue.DgTimingCheck(this.RankHistory.LastWriteGroup, cmd.Group, "WRITE",
+                            this.RankHistory.SinceWrite, this.tWrWrDg, "tWrWr_dg", "Since WRITE in rank");
 
                         dqsSchedule = this.scheduleDqs(cmd, true);
                         bankQueue.IssueCheck(dqsSchedule[0], `DQS available for ${dqsSchedule[1]} cycles after ${dqsSchedule[2]} cycles`);
@@ -754,6 +791,7 @@ class MemoryController {
                     this.BankHistory[dqs.Command.BankNum].SinceWriteData = -1;
                     this.GroupHistory[dqs.Command.Group].SinceWriteData = -1;
                     this.RankHistory.SinceWriteData = -1;
+                    this.RankHistory.LastWriteTxGroup = dqs.Command.Group;
                 }
             }
 
