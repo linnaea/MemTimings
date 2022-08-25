@@ -220,21 +220,21 @@
             </td>
         </tr>
         <tr>
-            <td>tRRD_S</td>
-            <td><input type="number" id="tRRDs" value="7" /></td>
+            <td>tRRD_L(sg)</td>
+            <td><input type="number" id="tRRDl" value="10" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort)<br>
-                ACTIVATE-to-ACTIVATE command period to different bank group.<br>
-                Wait this many cycles before activating another row in a different bank group.
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup<br>)<br>
+                ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
+                Wait this many cycles before activating another row in the same bank group.
             </td>
         </tr>
         <tr>
-            <td>tRRD_L</td>
-            <td><input type="number" id="tRRDl" value="10" /></td>
+            <td>tRRD_S(dg)</td>
+            <td><input type="number" id="tRRDs" value="7" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong)<br>
-                ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
-                Wait this many cycles before activating another row in the same bank group.
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup<br>)<br>
+                ACTIVATE-to-ACTIVATE command period to different bank group.<br>
+                Wait this many cycles before activating another row in a different bank group.
             </td>
         </tr>
         <tr>
@@ -246,24 +246,24 @@
             </td>
         </tr>
         <tr>
-            <td>tWTR_S</td>
-            <td><input type="number" id="tWTRs" value="5" /></td>
+            <td>tWTR_L(dg)</td>
+            <td><input type="number" id="tWTRl" value="14" /></td>
             <td>
-                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong, <b>s</b>ame <b>g</b>roup<br>)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                to issuing a READ command to a different bank group.<br>
-                On Intel: not configurable, calculated as tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
+                to issuing a READ command to a different bank in the same bank group.<br>
+                On Intel: not configurable, calculated as tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
                 On AMD: check notes.
             </td>
         </tr>
         <tr>
-            <td>tWTR_L</td>
-            <td><input type="number" id="tWTRl" value="14" /></td>
+            <td>tWTR_S(dg)</td>
+            <td><input type="number" id="tWTRs" value="5" /></td>
             <td>
-                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup<br>)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
-                to issuing a READ command to a different bank in the same bank group.<br>
-                On Intel: not configurable, calculated as tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
+                to issuing a READ command to a different bank group.<br>
+                On Intel: not configurable, calculated as tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
                 On AMD: check notes.
             </td>
         </tr>

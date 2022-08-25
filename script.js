@@ -981,8 +981,8 @@ function isColorDark(hexColor) {
     var r = parseInt(hexColor.slice(1, 3), 16);
     var g = parseInt(hexColor.slice(3, 5), 16);
     var b = parseInt(hexColor.slice(5, 7), 16);
-    var luma = Math.sqrt(0.2126 * r * r + 0.7152 * g * g + 0.0722 * b * b);
-    return luma < 144;
+    var luma = Math.sqrt(0.299 * r * r + 0.587 * g * g + 0.114 * b * b);
+    return luma < 128;
 }
 function renderCycleRow() {
     var _a, _b, _c, _d, _e, _f;

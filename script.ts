@@ -1125,9 +1125,9 @@ function isColorDark(hexColor: string) {
     const r = parseInt(hexColor.slice(1, 3), 16);
     const g = parseInt(hexColor.slice(3, 5), 16);
     const b = parseInt(hexColor.slice(5, 7), 16);
-    const luma = Math.sqrt(0.2126 * r * r + 0.7152 * g * g + 0.0722 * b * b);
+    const luma = Math.sqrt(0.299 * r * r + 0.587 * g * g + 0.114 * b * b);
 
-    return luma < 144;
+    return luma < 128;
 }
 
 function renderCycleRow() {
