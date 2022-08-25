@@ -179,7 +179,7 @@
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to when a PRECHARGE command can be issued.<br>
                 It takes this many cycles for data to be moved into the core of RAM.<br>
-                On Intel: not configurable, calculated as tWR = tWRPRE - tCWL - BL/2
+                On Intel: not configurable, calculated as tWR = tWRPRE/tWRPDEN - tCWL - BL/2
             </td>
         </tr>
         <tr>
@@ -223,7 +223,7 @@
             <td>tRRD_L(sg)</td>
             <td><input type="number" id="tRRDl" value="10" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
+                <b>R</b>ow-to-<b>R</b>ow <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
                 Wait this many cycles before activating another row in the same bank group.
             </td>
@@ -232,7 +232,7 @@
             <td>tRRD_S(dg)</td>
             <td><input type="number" id="tRRDs" value="7" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
+                <b>R</b>ow-to-<b>R</b>ow <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank group.<br>
                 Wait this many cycles before activating another row in a different bank group.
             </td>
@@ -470,7 +470,6 @@
         </p>
         <p><b>Some rambling on Intel's tWR:</b></p>
         <p>
-            Some people say is that tWR is controlled by tWRPDEN, which is partially true.<br>
             TLDR: To set tWR on Intel, either set tWRPDEN = tWRPRE = tCWL + BL/2 + tWR, or set tWRPRE and disable power down.
         </p>
         <p>
