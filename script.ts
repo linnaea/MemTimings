@@ -993,7 +993,7 @@ const allParams = [
     'cycles',
     'allCycles',
     'useAP',
-    'collapseNotes',
+    'hideNotes',
     'addrLock'
 ];
 

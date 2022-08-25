@@ -107,11 +107,11 @@
         }
 
         #timings input.collapse::after {
-            content: ">>> Collapse";
+            content: ">>> Hide Rambling";
         }
 
         #timings input.collapse:checked::after {
-            content: "<<< Expand";
+            content: "<<< Show Rambling";
         }
 
         #timings input.collapse:checked ~ table {
@@ -125,7 +125,7 @@
 </head>
 <body>
 <div id="timings">
-    <input type="checkbox" class="collapse" id="collapseNotes" />
+    <input type="checkbox" class="collapse" id="hideNotes" checked />
     <table>
         <tr>
             <th>Timing</th>
@@ -134,7 +134,7 @@
         </tr>
         <tr>
             <td>Speed (Mbps)</td>
-            <td><input type="number" id="memTxSpeed" value="3733" /></td>
+            <td><input type="number" id="memTxSpeed" value="3666" /></td>
             <td>
                 Not clock speed, transfer speed.<br>
                 Clock speed is half of this.<br>
@@ -213,7 +213,7 @@
             <td>tRC</td>
             <td><input type="number" id="tRC" value="68" /></td>
             <td>
-                <b>R</b>AS <b>C</b>ycling Time<br>
+                <b>R</b>ow <b>C</b>ycling Time<br>
                 ACTIVATE-to-ACTIVATE/REFRESH command period<br>
                 The RAM needs this many cycles for its core to settle down after an ACTIVATE command.<br>
                 On Intel: not configurable, calculated as tRC = tRP + tRAS
@@ -223,7 +223,7 @@
             <td>tRRD_L(sg)</td>
             <td><input type="number" id="tRRDl" value="10" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup<br>)<br>
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
                 Wait this many cycles before activating another row in the same bank group.
             </td>
@@ -232,7 +232,7 @@
             <td>tRRD_S(dg)</td>
             <td><input type="number" id="tRRDs" value="7" /></td>
             <td>
-                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup<br>)<br>
+                <b>R</b>AS-to-<b>R</b>AS <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank group.<br>
                 Wait this many cycles before activating another row in a different bank group.
             </td>
@@ -249,7 +249,7 @@
             <td>tWTR_L(dg)</td>
             <td><input type="number" id="tWTRl" value="14" /></td>
             <td>
-                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong, <b>s</b>ame <b>g</b>roup<br>)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank in the same bank group.<br>
                 On Intel: not configurable, calculated as tWTR_L = tWrRd_sg - tCWL - BL/2 - 2<br>
@@ -260,7 +260,7 @@
             <td>tWTR_S(dg)</td>
             <td><input type="number" id="tWTRs" value="5" /></td>
             <td>
-                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup<br>)<br>
+                <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to issuing a READ command to a different bank group.<br>
                 On Intel: not configurable, calculated as tWTR_S = tWrRd_dg - tCWL - BL/2 - 2<br>
@@ -541,7 +541,6 @@
         </tr>
         </thead>
         <tbody>
-
         </tbody>
     </table>
 </div>
