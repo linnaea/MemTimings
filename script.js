@@ -852,6 +852,7 @@ function getImcCommands() {
 var stateKey = 'SAVE';
 var cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(function (v) { return v.tagName === "TBODY"; })[0];
 var allParams = [
+    'memTxSpeed',
     'tCL',
     'tCWL',
     'tRCDrd',

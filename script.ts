@@ -961,6 +961,7 @@ interface SaveState {
 const stateKey = 'SAVE';
 const cmdTable = Array.prototype.slice.apply($x('cmdTable').childNodes).filter(v => v.tagName === "TBODY")[0];
 const allParams = [
+    'memTxSpeed',
     'tCL',
     'tCWL',
     'tRCDrd',

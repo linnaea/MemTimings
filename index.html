@@ -134,7 +134,7 @@
         </tr>
         <tr>
             <td>Speed (Mbps)</td>
-            <td><input type="number" id="memTxSpeed" value="3666" /></td>
+            <td><input type="number" id="memTxSpeed" value="3200" /></td>
             <td>
                 Not clock speed, transfer speed.<br>
                 Clock speed is half of this.<br>
@@ -157,7 +157,7 @@
         </tr>
         <tr>
             <td>tCAS/tCL/tAA</td>
-            <td><input type="number" id="tCL" value="18" /></td>
+            <td><input type="number" id="tCL" value="22" /></td>
             <td>
                 <b>C</b>AS (Read) <b>L</b>atency<br>
                 A READ command takes this many cycles to process.
@@ -165,7 +165,7 @@
         </tr>
         <tr>
             <td>tCWL/tCWD</td>
-            <td><input type="number" id="tCWL" value="17" /></td>
+            <td><input type="number" id="tCWL" value="20" /></td>
             <td>
                 <b>C</b>AS (<b>W</b>rite) <b>L</b>atency<br>
                 The RAM needs this many cycles to get ready to accept data after a WRITE command is issued.
@@ -173,7 +173,7 @@
         </tr>
         <tr>
             <td>tWR</td>
-            <td><input type="number" id="tWR" value="12" /></td>
+            <td><input type="number" id="tWR" value="24" /></td>
             <td>
                 <b>W</b>rite <b>R</b>ecovery Time<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
@@ -202,7 +202,7 @@
         </tr>
         <tr>
             <td>tRAS</td>
-            <td><input type="number" id="tRAS" value="42" /></td>
+            <td><input type="number" id="tRAS" value="51" /></td>
             <td>
                 <b>R</b>ow <b>A</b>ctive <b>S</b>ustained Time<br>
                 ACTIVATE-to-PRECHARGE command period<br>
@@ -211,7 +211,7 @@
         </tr>
         <tr>
             <td>tRC</td>
-            <td><input type="number" id="tRC" value="68" /></td>
+            <td><input type="number" id="tRC" value="73" /></td>
             <td>
                 <b>R</b>ow <b>C</b>ycling Time<br>
                 ACTIVATE-to-ACTIVATE/REFRESH command period<br>
@@ -221,7 +221,7 @@
         </tr>
         <tr>
             <td>tRRD_L(sg)</td>
-            <td><input type="number" id="tRRDl" value="10" /></td>
+            <td><input type="number" id="tRRDl" value="8" /></td>
             <td>
                 <b>R</b>ow-to-<b>R</b>ow <b>D</b>elay (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank in same bank group.<br>
@@ -230,7 +230,7 @@
         </tr>
         <tr>
             <td>tRRD_S(dg)</td>
-            <td><input type="number" id="tRRDs" value="7" /></td>
+            <td><input type="number" id="tRRDs" value="4" /></td>
             <td>
                 <b>R</b>ow-to-<b>R</b>ow <b>D</b>elay (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
                 ACTIVATE-to-ACTIVATE command period to different bank group.<br>
@@ -239,7 +239,7 @@
         </tr>
         <tr>
             <td>tFAW</td>
-            <td><input type="number" id="tFAW" value="16" /></td>
+            <td><input type="number" id="tFAW" value="34" /></td>
             <td>
                 <b>F</b>our <b>A</b>ctivate <b>W</b>indow Time<br>
                 At most 4 ACTIVATE commands can be sent to RAM in this many cycles.
@@ -247,7 +247,7 @@
         </tr>
         <tr>
             <td>tWTR_L(dg)</td>
-            <td><input type="number" id="tWTRl" value="14" /></td>
+            <td><input type="number" id="tWTRl" value="12" /></td>
             <td>
                 <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>L</b>ong, <b>s</b>ame <b>g</b>roup)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
@@ -258,7 +258,7 @@
         </tr>
         <tr>
             <td>tWTR_S(dg)</td>
-            <td><input type="number" id="tWTRs" value="5" /></td>
+            <td><input type="number" id="tWTRs" value="4" /></td>
             <td>
                 <b>W</b>rite <b>T</b>o <b>R</b>ead Time (<b>S</b>hort, <b>d</b>ifferent <b>g</b>roup)<br>
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
@@ -269,7 +269,7 @@
         </tr>
         <tr>
             <td>tRdRd_sg</td>
-            <td><input type="number" id="tRdRdSg" value="5" /></td>
+            <td><input type="number" id="tRdRdSg" value="8" /></td>
             <td>
                 <b>R</b>ea<b>d</b>-to-<b>R</b>ea<b>d</b> Delay <b>s</b>ame <b>g</b>roup<br>
                 READ-to-READ command period to different bank in same bank group.<br>
@@ -289,7 +289,7 @@
         </tr>
         <tr>
             <td>tWrWr_sg</td>
-            <td><input type="number" id="tWrWrSg" value="5" /></td>
+            <td><input type="number" id="tWrWrSg" value="8" /></td>
             <td>
                 <b>Wr</b>ite-to-<b>Wr</b>ite Delay <b>s</b>ame <b>g</b>roup<br>
                 WRITE-to-WRITE command period to different bank in same bank group.<br>
@@ -309,7 +309,7 @@
         </tr>
         <tr>
             <td>tRdWr_sg</td>
-            <td><input type="number" id="tRdWrSg" value="5" /></td>
+            <td><input type="number" id="tRdWrSg" value="8" /></td>
             <td>
                 <b>R</b>ea<b>d</b>-to-<b>Wr</b>ite Delay <b>s</b>ame <b>g</b>roup<br>
                 READ-to-WRITE command period to different bank in same bank group.<br>
@@ -329,7 +329,7 @@
         </tr>
         <tr>
             <td>tREFI</td>
-            <td><input type="number" id="tREFI" value="14062" /></td>
+            <td><input type="number" id="tREFI" value="12500" /></td>
             <td>
                 <b>REF</b>resh <b>I</b>nterval Time<br>
                 Average cycles between REFRESH commands.<br>
@@ -339,7 +339,7 @@
         </tr>
         <tr>
             <td>tRFC</td>
-            <td><input type="number" id="tRFC" value="642" /></td>
+            <td><input type="number" id="tRFC" value="560" /></td>
             <td>
                 <b>R</b>e<b>F</b>resh <b>C</b>ycle Time<br>
                 A REFRESH command takes this many cycles to process in normal (1x) refresh mode.<br>
