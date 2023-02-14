@@ -179,7 +179,7 @@
                 Delay from an WRITE operation is started on RAM(after data is sent)<br>
                 to when a PRECHARGE command can be issued.<br>
                 It takes this many cycles for data to be moved into the core of RAM.<br>
-                On Intel: not configurable, calculated as tWR = tWRPRE/tWRPDEN - tCWL - BL/2
+                On Intel: not configurable, calculated as tWR = tWRPRE(or tWRPDEN, see notes) - tCWL - BL/2
             </td>
         </tr>
         <tr>
@@ -188,7 +188,8 @@
             <td>
                 <b>R</b>ead <b>T</b>o <b>P</b>recharge Time<br>
                 READ-to-PRECHARGE command period<br>
-                It takes this many cycles for data to be moved back into the core of RAM.
+                It takes this many cycles for data to be moved back into the core of RAM.<br>
+                On DDR4 tWR = 2 * tRTP, always, as they share config register on the RAM.
             </td>
         </tr>
         <tr>
@@ -364,7 +365,7 @@
             <td>
                 <b>R</b>e<b>F</b>resh <b>C</b>ycle Time (in <b>4</b>x Refresh Mode)<br>
                 A REFRESH command takes this many cycles to process in 4x refresh mode.<br>
-                Might be unused, seems to have been deleted in DDR5.
+                Might be unused, deleted in DDR5.
             </td>
         </tr>
         <tr>
